@@ -9,11 +9,6 @@ interface PrototypeItem {
 export class MenuScene extends Phaser.Scene {
   private prototypes: PrototypeItem[] = [
     {
-      key: 'GameScene',
-      name: '平台跳跃',
-      description: '方向键移动，上键跳跃',
-    },
-    {
       key: 'MazeScene',
       name: '宝藏迷宫',
       description: '用探测器找宝藏，躲避怪物，逃出生天！',
