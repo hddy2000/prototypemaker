@@ -2,27 +2,79 @@ import Phaser from 'phaser';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface Obstacle {
+interface CarriageDef {
+  index: number;          // 0 = 车头, 1..6 = 车厢
+  x: number;              // 左边界
+  width: number;
+  isLocomotive: boolean;  // 车头（动能区）
+}
+
+interface DoorDef {
+  x: number;              // 门的中心 x
+  y: number;
+  carriageIndex: number;  // 所属车厢（1..6）
+  side: 'front' | 'back'; // front = 朝车头方向, back = 朝车尾方向
+  sealed: boolean;        // 是否被封锁
+  sealGraphic?: Phaser.GameObjects.Rectangle;
+}
+
+interface HideSpot {
   x: number; y: number; w: number; h: number;
+  kind: 'toilet' | 'locker';
+  occupied: boolean;      // 玩家是否正躲在里面
 }
 
 interface Monster {
-  sprite: Phaser.GameObjects.Container;
-  body: Phaser.GameObjects.Arc;
-  facing: Phaser.Math.Vector2;   // direction the monster is "facing"
+  container: Phaser.GameObjects.Container;
+  body: Phaser.GameObjects.Rectangle;
+  eye: Phaser.GameObjects.Arc;
+  facing: Phaser.Math.Vector2;
   speed: number;
   wanderTimer: number;
   alive: boolean;
-  attackCooldown: number;
-  pollutionDropTimer: number;    // drops pollution periodically while wandering
+  pollutionDropTimer: number;
+  carriageIndex: number;  // 当前所在车厢
 }
 
-interface Pollution {
-  sprite: Phaser.GameObjects.Arc;
-  x: number; y: number;
-  amount: number;                // how much "pollution" this puddle holds
-  collected: boolean;
-}
+// ── Constants ──────────────────────────────────────────────────────────────
+
+const CAR_W = 520;            // 单节车厢宽
+const CAR_H = 360;            // 车厢高
+const CAR_GAP = 24;           // 车厢间门区宽度
+const CAR_COUNT = 6;          // 6节车厢
+const LOCO_W = 360;           // 车头宽
+
+const LOCO_X = 40;
+const FIRST_CAR_X = LOCO_X + LOCO_W + CAR_GAP;
+const CAR_Y = 120;
+const MAP_PAD = 40;
+
+// 玩家
+const PLAYER_SPEED = 175;
+const PLAYER_CARRY_SPEED = 105;   // 携带残秽时减速
+const PLAYER_CLEAN_SPEED = 55;    // 吸取残秽时几乎站定
+const PLAYER_SIZE = 22;
+
+// 怪物
+const MONSTER_W = 64;             // 几乎占满过道
+const MONSTER_H = 96;
+const MONSTER_SPEED = PLAYER_SPEED * 1.08;  // 比玩家快一点点
+
+// 残秽（红色涂抹）
+const POLLUTION_MAX = 100;        // 每节车厢残秽浓度上限
+const POLLUTION_SPREAD_RATE = 0.6;// 每秒向相邻车厢扩散
+const POLLUTION_HIGH_THRESHOLD = 60;
+
+// 燃料 / 距离
+const FUEL_MAX = 100;
+const FUEL_PER_DEPOSIT = 14;      // 每次投喂转化
+const DISTANCE_TOTAL = 1000;      // 总距离
+const FUEL_DRAIN_RATE = 1.8;      // 每秒燃料消耗
+const STALL_DEATH_TIME = 30000;   // 熄火30秒 → 失败
+
+// 封锁器
+const SEALER_TOTAL = 4;           // 全局只有4个
+const SEALER_PICKUP_RANGE = 30;
 
 // ── Scene ──────────────────────────────────────────────────────────────────
 
@@ -31,52 +83,54 @@ export class CleanupScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private escKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
+  private shiftKey!: Phaser.Input.Keyboard.Key;
 
-  // Map
-  private mapWidth = 1600;
-  private mapHeight = 1200;
-  private obstacles: Obstacle[] = [];
+  // 地图
+  private carriages: CarriageDef[] = [];
+  private doors: DoorDef[] = [];
+  private hideSpots: HideSpot[] = [];
   private mapGraphics!: Phaser.GameObjects.Graphics;
 
-  // Camera
-  private cam!: Phaser.Cameras.Scene2D.Camera;
+  // 残秽：每节车厢一张 canvas 纹理，红色涂抹
+  private pollutionCanvases: Phaser.GameObjects.Image[] = [];
+  private pollutionLevels: number[] = [];   // 每节车厢浓度 0..100
+  private pollutionHighTimer: number[] = []; // 浓度满持续计时
 
-  // Game objects
+  // 怪物
   private monsters: Monster[] = [];
-  private pollutions: Pollution[] = [];
+
+  // 玩家状态
+  private carrying = 0;          // 携带的残秽量
+  private carryCapacity = 1;     // 一次只能搬一份
+  private isCleaning = false;    // 是否正在吸取
+  private isHidden = false;      // 是否躲藏中
+  private hiddenSpot: HideSpot | null = null;
+  private hasSealer = false;     // 是否携带封锁器
+
+  // 封锁器存放处（车头）
+  private sealerPickup!: Phaser.GameObjects.Container;
+  private sealersRemaining = SEALER_TOTAL;
+
+  // 动能区（车头）
   private depositZone!: Phaser.GameObjects.Container;
 
-  // Player stats
-  private health = 100;
-  private carrying = 0;          // pollution currently being carried
-  private carryCapacity = 10;    // max carry per trip
+  // 燃料 / 距离
+  private fuel = FUEL_MAX;
+  private distanceLeft = DISTANCE_TOTAL;
+  private stallTimer = 0;        // 熄火累计时间
 
-  // Attack
-  private attackRange = 90;
-  private attackCooldown = 0;
-  private attackArc!: Phaser.GameObjects.Graphics;
-  private attackVisualTimer = 0;
-
-  // Spawning
-  private spawnTimer = 0;
-  private spawnInterval = 16000; // a new monster every 16s
-  private maxMonsters = 6;
-
-  // Win / lose
-  private deposited = 0;
-  private goal = 50;             // need to deposit 50 units total
-  private timeLimit = 180000;    // 3 minutes
-  private pollutionCap = 80;     // total pollution on map >= this → lose
+  // 状态
   private isDead = false;
   private isWon = false;
 
   // UI
-  private healthText!: Phaser.GameObjects.Text;
+  private fuelText!: Phaser.GameObjects.Text;
+  private distText!: Phaser.GameObjects.Text;
   private carryText!: Phaser.GameObjects.Text;
-  private depositedText!: Phaser.GameObjects.Text;
-  private timerText!: Phaser.GameObjects.Text;
+  private sealerText!: Phaser.GameObjects.Text;
   private pollutionText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
+  private messageTimer: number | null = null;
 
   constructor() {
     super({ key: 'CleanupScene' });
@@ -85,435 +139,174 @@ export class CleanupScene extends Phaser.Scene {
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
   create() {
-    this.cam = this.cameras.main;
-    this.cam.setBounds(0, 0, this.mapWidth, this.mapHeight);
+    this.cameras.main.setBounds(0, 0, this.getTotalWidth(), CAR_H + CAR_Y + MAP_PAD);
+    this.cameras.main.setBackgroundColor('#0a0a0f');
 
-    this.generateMap();
+    this.buildCarriages();
     this.drawMap();
     this.createDepositZone();
+    this.createSealerPickup();
     this.createPlayer();
     this.createUI();
     this.setupInput();
-    this.createAttackArc();
 
-    // Spawn first monster
-    this.spawnMonster();
+    // 初始一只怪物在尾车
+    this.spawnMonster(CAR_COUNT);
 
-    this.cam.startFollow(this.player, true, 0.1, 0.1);
+    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
   }
 
-  // ── Map Generation ───────────────────────────────────────────────────────
+  // ── Map Building ─────────────────────────────────────────────────────────
 
-  private generateMap() {
-    this.obstacles = [];
+  private getTotalWidth(): number {
+    return LOCO_X + LOCO_W + CAR_GAP + CAR_COUNT * CAR_W + (CAR_COUNT - 1) * CAR_GAP + MAP_PAD;
+  }
 
-    // Border walls
-    this.obstacles.push({ x: 0, y: 0, w: this.mapWidth, h: 20 });
-    this.obstacles.push({ x: 0, y: this.mapHeight - 20, w: this.mapWidth, h: 20 });
-    this.obstacles.push({ x: 0, y: 0, w: 20, h: this.mapHeight });
-    this.obstacles.push({ x: this.mapWidth - 20, y: 0, w: 20, h: this.mapHeight });
+  private carLeftX(index: number): number {
+    return FIRST_CAR_X + (index - 1) * (CAR_W + CAR_GAP);
+  }
 
-    // Scattered crate obstacles
-    const crateCount = 24;
-    for (let i = 0; i < crateCount; i++) {
-      const w = Phaser.Math.Between(40, 90);
-      const h = Phaser.Math.Between(40, 90);
-      const x = Phaser.Math.Between(60, this.mapWidth - 60 - w);
-      const y = Phaser.Math.Between(60, this.mapHeight - 60 - h);
-      // keep center-ish area clear for deposit zone
-      const cx = this.mapWidth / 2;
-      const cy = this.mapHeight / 2;
-      if (Phaser.Math.Distance.Between(x + w / 2, y + h / 2, cx, cy) < 140) continue;
-      this.obstacles.push({ x, y, w, h });
+  private carRightX(index: number): number {
+    return this.carLeftX(index) + CAR_W;
+  }
+
+  private carCenterX(index: number): number {
+    return this.carLeftX(index) + CAR_W / 2;
+  }
+
+  private buildCarriages() {
+    this.carriages.push({ index: 0, x: LOCO_X, width: LOCO_W, isLocomotive: true });
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      this.carriages.push({ index: i, x: this.carLeftX(i), width: CAR_W, isLocomotive: false });
+    }
+
+    // 车厢门：每节车厢前后各一扇
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      const leftX = this.carLeftX(i);
+      const rightX = this.carRightX(i);
+      const doorY = CAR_Y + CAR_H / 2;
+      this.doors.push({ x: rightX + CAR_GAP / 2, y: doorY, carriageIndex: i, side: 'back', sealed: false });
+      this.doors.push({ x: leftX - CAR_GAP / 2, y: doorY, carriageIndex: i, side: 'front', sealed: false });
+    }
+
+    // 每节车厢：前后各一个厕所隔间，中间两个柜子
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      const lx = this.carLeftX(i);
+      this.hideSpots.push({ x: lx + 30, y: CAR_Y + 24, w: 70, h: 80, kind: 'toilet', occupied: false });
+      this.hideSpots.push({ x: lx + CAR_W - 100, y: CAR_Y + 24, w: 70, h: 80, kind: 'toilet', occupied: false });
+      this.hideSpots.push({ x: lx + 120, y: CAR_Y + CAR_H - 90, w: 60, h: 60, kind: 'locker', occupied: false });
+      this.hideSpots.push({ x: lx + CAR_W - 180, y: CAR_Y + CAR_H - 90, w: 60, h: 60, kind: 'locker', occupied: false });
+    }
+
+    for (let i = 0; i <= CAR_COUNT; i++) {
+      this.pollutionLevels.push(0);
+      this.pollutionHighTimer.push(0);
     }
   }
-
-  // ── Drawing ──────────────────────────────────────────────────────────────
 
   private drawMap() {
     this.mapGraphics = this.add.graphics();
+    this.mapGraphics.setDepth(0);
 
-    // Floor — industrial grime
-    this.mapGraphics.fillStyle(0x1c1c22, 1);
-    this.mapGraphics.fillRect(0, 0, this.mapWidth, this.mapHeight);
+    // 车头
+    this.mapGraphics.fillStyle(0x1a1a2e, 1);
+    this.mapGraphics.fillRect(LOCO_X, CAR_Y, LOCO_W, CAR_H);
+    this.mapGraphics.lineStyle(3, 0x4a4a6a, 1);
+    this.mapGraphics.strokeRect(LOCO_X, CAR_Y, LOCO_W, CAR_H);
 
-    // Grid
-    this.mapGraphics.lineStyle(1, 0x2a2a32, 0.4);
-    for (let x = 0; x < this.mapWidth; x += 80) {
-      this.mapGraphics.lineBetween(x, 0, x, this.mapHeight);
+    // 6节车厢
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      const lx = this.carLeftX(i);
+      this.mapGraphics.fillStyle(0x1c1c22, 1);
+      this.mapGraphics.fillRect(lx, CAR_Y, CAR_W, CAR_H);
+      this.mapGraphics.lineStyle(3, 0x3a3a44, 1);
+      this.mapGraphics.strokeRect(lx, CAR_Y, CAR_W, CAR_H);
+      // 座椅区装饰
+      this.mapGraphics.fillStyle(0x2a2a30, 1);
+      this.mapGraphics.fillRect(lx + 10, CAR_Y + 110, CAR_W - 20, 30);
+      this.mapGraphics.fillRect(lx + 10, CAR_Y + CAR_H - 80, CAR_W - 20, 30);
     }
-    for (let y = 0; y < this.mapHeight; y += 80) {
-      this.mapGraphics.lineBetween(0, y, this.mapWidth, y);
+
+    // 躇所隔间 & 柜子
+    for (const spot of this.hideSpots) {
+      const color = spot.kind === 'toilet' ? 0x3a3a4a : 0x4a3a2a;
+      this.mapGraphics.fillStyle(color, 1);
+      this.mapGraphics.lineStyle(2, 0x6a6a7a, 1);
+      this.mapGraphics.fillRect(spot.x, spot.y, spot.w, spot.h);
+      this.mapGraphics.strokeRect(spot.x, spot.y, spot.w, spot.h);
+      this.mapGraphics.fillStyle(0x1a1a1a, 1);
+      this.mapGraphics.fillRect(spot.x + spot.w / 2 - 8, spot.y + spot.h - 6, 16, 6);
     }
 
-    // Crates
-    this.mapGraphics.fillStyle(0x3a3a44, 1);
-    this.mapGraphics.lineStyle(2, 0x555560, 1);
-    for (const obs of this.obstacles) {
-      if (obs.w >= this.mapWidth || obs.h >= this.mapHeight) continue; // skip borders
-      this.mapGraphics.fillRect(obs.x, obs.y, obs.w, obs.h);
-      this.mapGraphics.strokeRect(obs.x, obs.y, obs.w, obs.h);
+    // 车厢门框
+    for (const door of this.doors) {
+      this.mapGraphics.fillStyle(0x111118, 1);
+      this.mapGraphics.fillRect(door.x - CAR_GAP / 2 + 2, CAR_Y + 4, CAR_GAP - 4, CAR_H - 8);
+      this.mapGraphics.lineStyle(2, 0x5a5a6a, 0.6);
+      this.mapGraphics.strokeRect(door.x - CAR_GAP / 2 + 2, CAR_Y + 4, CAR_GAP - 4, CAR_H - 8);
+    }
+
+    // 每节车厢的残秽 canvas 纹理
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      const lx = this.carLeftX(i);
+      const texKey = `pollution-car-${i}`;
+      if (this.textures.exists(texKey)) this.textures.remove(texKey);
+      const canvas = this.textures.createCanvas(texKey, CAR_W, CAR_H);
+      if (canvas) {
+        const ctx = canvas.getContext();
+        ctx.clearRect(0, 0, CAR_W, CAR_H);
+      }
+      const img = this.add.image(lx, CAR_Y, texKey);
+      img.setOrigin(0, 0);
+      img.setDepth(1);
+      this.pollutionCanvases.push(img);
     }
   }
 
-  // ── Deposit Zone ─────────────────────────────────────────────────────────
+  // ── Deposit Zone (动能区) ────────────────────────────────────────────────
 
   private createDepositZone() {
-    const cx = this.mapWidth / 2;
-    const cy = this.mapHeight / 2;
+    const cx = LOCO_X + LOCO_W / 2;
+    const cy = CAR_Y + CAR_H / 2;
     const container = this.add.container(cx, cy);
-    container.setDepth(2);
+    container.setDepth(3);
 
-    const pad = this.add.rectangle(0, 0, 90, 90, 0x004422, 0.5);
-    const ring = this.add.circle(0, 0, 50, 0x00ff66, 0.15);
+    const pad = this.add.rectangle(0, 0, 120, 120, 0x004422, 0.4);
+    const ring = this.add.circle(0, 0, 55, 0x00ff66, 0.12);
     ring.setStrokeStyle(3, 0x00ff66, 0.8);
-    const label = this.add.text(0, 0, '净化站', {
-      fontSize: '14px', color: '#00ff66',
-    }).setOrigin(0.5);
-    container.add([pad, ring, label]);
+    const label = this.add.text(0, -10, '转化炉', { fontSize: '14px', color: '#00ff66' }).setOrigin(0.5);
+    const sub = this.add.text(0, 12, '投喂残秽', { fontSize: '11px', color: '#00aa44' }).setOrigin(0.5);
+    container.add([pad, ring, label, sub]);
 
     this.tweens.add({
-      targets: ring,
-      scale: { from: 0.85, to: 1.15 },
+      targets: ring, scale: { from: 0.85, to: 1.15 },
       duration: 800, yoyo: true, repeat: -1, ease: 'Sine.inOut',
     });
-
     this.depositZone = container;
+  }
+
+  // ── Sealer Pickup (车头存放处) ───────────────────────────────────────────
+
+  private createSealerPickup() {
+    const cx = LOCO_X + 60;
+    const cy = CAR_Y + CAR_H - 50;
+    const container = this.add.container(cx, cy);
+    container.setDepth(3);
+    const box = this.add.rectangle(0, 0, 40, 40, 0x553300, 0.8);
+    box.setStrokeStyle(2, 0xaa7733, 1);
+    const label = this.add.text(0, 0, '🔒\n封锁器', { fontSize: '10px', color: '#ffcc66', align: 'center' }).setOrigin(0.5);
+    container.add([box, label]);
+    this.sealerPickup = container;
   }
 
   // ── Player ───────────────────────────────────────────────────────────────
 
   private createPlayer() {
-    // Start near top-left, away from deposit zone
-    this.player = this.add.rectangle(120, 120, 24, 24, 0x44ddff);
+    this.player = this.add.rectangle(
+      LOCO_X + LOCO_W / 2, CAR_Y + CAR_H / 2,
+      PLAYER_SIZE, PLAYER_SIZE, 0x44ddff
+    );
     this.player.setDepth(5);
-  }
-
-  // ── Attack Arc Visual ────────────────────────────────────────────────────
-
-  private createAttackArc() {
-    this.attackArc = this.add.graphics();
-    this.attackArc.setDepth(4);
-  }
-
-  // ── Monsters ─────────────────────────────────────────────────────────────
-
-  private spawnMonster() {
-    // Spawn at a random edge location, away from player
-    let x = 0, y = 0;
-    for (let attempt = 0; attempt < 50; attempt++) {
-      const edge = Phaser.Math.Between(0, 3);
-      if (edge === 0) { x = Phaser.Math.Between(60, this.mapWidth - 60); y = 60; }
-      else if (edge === 1) { x = Phaser.Math.Between(60, this.mapWidth - 60); y = this.mapHeight - 60; }
-      else if (edge === 2) { x = 60; y = Phaser.Math.Between(60, this.mapHeight - 60); }
-      else { x = this.mapWidth - 60; y = Phaser.Math.Between(60, this.mapHeight - 60); }
-
-      if (this.isInsideObstacle(x, y, 20)) continue;
-      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 250) continue;
-      break;
-    }
-
-    const container = this.add.container(x, y);
-    container.setDepth(6);
-
-    const body = this.add.circle(0, 0, 16, 0x9933ff, 0.9);
-    const eye = this.add.circle(8, -4, 4, 0xff0000); // eye offset shows facing
-    const wisp = this.add.circle(0, 0, 22, 0x9933ff, 0.15);
-    container.add([wisp, body, eye]);
-
-    this.tweens.add({
-      targets: [body, eye],
-      y: '+=5',
-      duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut',
-    });
-
-    // spawn pop-in
-    container.setScale(0);
-    this.tweens.add({
-      targets: container,
-      scale: { from: 0, to: 1 },
-      duration: 300, ease: 'Back.easeOut',
-    });
-
-    this.monsters.push({
-      sprite: container,
-      body,
-      facing: new Phaser.Math.Vector2(1, 0),
-      speed: 70,
-      wanderTimer: 0,
-      alive: true,
-      attackCooldown: 0,
-      pollutionDropTimer: 0,
-    });
-  }
-
-  private updateMonsters(delta: number) {
-    const dt = delta / 1000;
-
-    for (const m of this.monsters) {
-      if (!m.alive) continue;
-
-      // Wander randomly
-      m.wanderTimer += delta;
-      if (m.wanderTimer > 1500) {
-        m.wanderTimer = 0;
-        const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-        m.facing.set(Math.cos(angle), Math.sin(angle));
-      }
-
-      const newX = m.sprite.x + m.facing.x * m.speed * dt;
-      const newY = m.sprite.y + m.facing.y * m.speed * dt;
-      if (!this.isObstacleAt(newX, m.sprite.y, 12)) m.sprite.x = newX;
-      else m.facing.x *= -1;
-      if (!this.isObstacleAt(m.sprite.x, newY, 12)) m.sprite.y = newY;
-      else m.facing.y *= -1;
-
-      // Update eye position to show facing direction
-      const eye = m.sprite.getAt(2) as Phaser.GameObjects.Arc;
-      if (eye) {
-        eye.x = m.facing.x * 8;
-        eye.y = m.facing.y * 8 - 2;
-      }
-
-      // Drop pollution periodically while alive
-      m.pollutionDropTimer += delta;
-      if (m.pollutionDropTimer > 2500) {
-        m.pollutionDropTimer = 0;
-        this.dropPollution(m.sprite.x, m.sprite.y);
-      }
-
-      // Attack: only if player is in front (within facing cone) and close
-      m.attackCooldown -= delta;
-      if (m.attackCooldown <= 0) {
-        const toPlayer = new Phaser.Math.Vector2(
-          this.player.x - m.sprite.x,
-          this.player.y - m.sprite.y
-        );
-        const dist = toPlayer.length();
-        if (dist < 120) {
-          toPlayer.normalize();
-          const dot = m.facing.dot(toPlayer);
-          // dot > 0.6 ≈ within ~53° cone in front
-          if (dot > 0.6) {
-            this.monsterAttack(m);
-            m.attackCooldown = 1200;
-          }
-        }
-      }
-    }
-
-    // Clean up dead monsters
-    this.monsters = this.monsters.filter(m => {
-      if (!m.alive) { m.sprite.destroy(); return false; }
-      return true;
-    });
-  }
-
-  private monsterAttack(m: Monster) {
-    // Lunge toward player and deal damage if still close
-    const dir = new Phaser.Math.Vector2(
-      this.player.x - m.sprite.x,
-      this.player.y - m.sprite.y
-    ).normalize();
-    this.tweens.add({
-      targets: m.sprite,
-      x: m.sprite.x + dir.x * 30,
-      y: m.sprite.y + dir.y * 30,
-      duration: 200, yoyo: true, ease: 'Quad.out',
-    });
-
-    const dist = Phaser.Math.Distance.Between(
-      this.player.x, this.player.y, m.sprite.x, m.sprite.y
-    );
-    if (dist < 40) {
-      this.health -= 12;
-      this.cam.shake(100, 0.008);
-      if (this.health <= 0) { this.health = 0; this.die('被怪物击杀！'); }
-    }
-  }
-
-  // ── Pollution ────────────────────────────────────────────────────────────
-
-  private dropPollution(x: number, y: number) {
-    // Slight random offset
-    const px = x + Phaser.Math.Between(-15, 15);
-    const py = y + Phaser.Math.Between(-15, 15);
-    if (this.isInsideObstacle(px, py, 10)) return;
-
-    const puddle = this.add.circle(px, py, 14, 0x44ff00, 0.55);
-    puddle.setDepth(3);
-    this.tweens.add({
-      targets: puddle,
-      scale: { from: 0.3, to: 1 },
-      duration: 300, ease: 'Back.easeOut',
-    });
-
-    this.pollutions.push({
-      sprite: puddle,
-      x: px, y: py,
-      amount: 2,
-      collected: false,
-    });
-  }
-
-  private totalPollutionOnMap(): number {
-    return this.pollutions
-      .filter(p => !p.collected)
-      .reduce((sum, p) => sum + p.amount, 0);
-  }
-
-  // ── Player Attack ────────────────────────────────────────────────────────
-
-  private handleAttack() {
-    if (this.attackCooldown > 0) return;
-
-    if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-      this.attackCooldown = 500;
-      this.attackVisualTimer = 250;
-
-      // Determine attack direction from last movement / facing
-      let dx = 0, dy = 0;
-      if (this.cursors.left.isDown) dx -= 1;
-      if (this.cursors.right.isDown) dx += 1;
-      if (this.cursors.up.isDown) dy -= 1;
-      if (this.cursors.down.isDown) dy += 1;
-      if (dx === 0 && dy === 0) { dx = 1; dy = 0; } // default right
-      const len = Math.sqrt(dx * dx + dy * dy) || 1;
-      dx /= len; dy /= len;
-
-      // Kill monsters within range and in front cone
-      for (const m of this.monsters) {
-        if (!m.alive) continue;
-        const toM = new Phaser.Math.Vector2(
-          m.sprite.x - this.player.x,
-          m.sprite.y - this.player.y
-        );
-        const dist = toM.length();
-        if (dist > this.attackRange) continue;
-        toM.normalize();
-        const dot = dx * toM.x + dy * toM.y;
-        if (dot > 0.3) { // wide cone
-          m.alive = false;
-          // burst of pollution on death
-          for (let i = 0; i < 3; i++) {
-            this.dropPollution(m.sprite.x, m.sprite.y);
-          }
-          // death effect
-          this.tweens.add({
-            targets: m.sprite,
-            scale: 0, alpha: 0,
-            duration: 250, ease: 'Quad.in',
-          });
-        }
-      }
-    }
-  }
-
-  private drawAttackArc(delta: number) {
-    this.attackArc.clear();
-    if (this.attackVisualTimer > 0) {
-      this.attackVisualTimer -= delta;
-
-      let dx = 0, dy = 0;
-      if (this.cursors.left.isDown) dx -= 1;
-      if (this.cursors.right.isDown) dx += 1;
-      if (this.cursors.up.isDown) dy -= 1;
-      if (this.cursors.down.isDown) dy += 1;
-      if (dx === 0 && dy === 0) { dx = 1; dy = 0; }
-      const angle = Math.atan2(dy, dx);
-
-      this.attackArc.fillStyle(0x44ddff, 0.25);
-      this.attackArc.lineStyle(2, 0x88eeff, 0.8);
-      this.attackArc.beginPath();
-      this.attackArc.moveTo(this.player.x, this.player.y);
-      this.attackArc.arc(this.player.x, this.player.y, this.attackRange, angle - 0.6, angle + 0.6, false);
-      this.attackArc.lineTo(this.player.x, this.player.y);
-      this.attackArc.fillPath();
-      this.attackArc.strokePath();
-    }
-  }
-
-  // ── Collect & Deposit ────────────────────────────────────────────────────
-
-  private checkCollect() {
-    if (this.carrying >= this.carryCapacity) return;
-
-    for (const p of this.pollutions) {
-      if (p.collected) continue;
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y);
-      if (d < 28) {
-        const space = this.carryCapacity - this.carrying;
-        const take = Math.min(space, p.amount);
-        this.carrying += take;
-        p.amount -= take;
-        if (p.amount <= 0) {
-          p.collected = true;
-          this.tweens.add({
-            targets: p.sprite, scale: 0, alpha: 0,
-            duration: 200, ease: 'Quad.in',
-            onComplete: () => p.sprite.destroy(),
-          });
-        }
-      }
-    }
-
-    // Clean up collected
-    this.pollutions = this.pollutions.filter(p => !p.collected || p.sprite.active);
-  }
-
-  private checkDeposit() {
-    const d = Phaser.Math.Distance.Between(
-      this.player.x, this.player.y,
-      this.depositZone.x, this.depositZone.y
-    );
-    if (d < 50 && this.carrying > 0) {
-      this.deposited += this.carrying;
-      this.carrying = 0;
-      this.cam.flash(200, 0, 255, 100);
-      if (this.deposited >= this.goal) {
-        this.win();
-      }
-    }
-  }
-
-  // ── UI ───────────────────────────────────────────────────────────────────
-
-  private createUI() {
-    this.healthText = this.add.text(16, 16, '生命: 100', {
-      fontSize: '18px', color: '#ffffff',
-    }).setScrollFactor(0).setDepth(20);
-
-    this.carryText = this.add.text(16, 40, '携带: 0/10', {
-      fontSize: '18px', color: '#88ff88',
-    }).setScrollFactor(0).setDepth(20);
-
-    this.depositedText = this.add.text(16, 64, '已净化: 0/50', {
-      fontSize: '18px', color: '#00ff66',
-    }).setScrollFactor(0).setDepth(20);
-
-    this.timerText = this.add.text(16, 88, '时间: 180s', {
-      fontSize: '18px', color: '#ffff88',
-    }).setScrollFactor(0).setDepth(20);
-
-    this.pollutionText = this.add.text(16, 112, '污染: 0/80', {
-      fontSize: '18px', color: '#ff4444',
-    }).setScrollFactor(0).setDepth(20);
-
-    this.messageText = this.add.text(400, 500, '', {
-      fontSize: '22px', color: '#ffffff', align: 'center',
-      backgroundColor: '#000000', padding: { x: 16, y: 8 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
-
-    const backBtn = this.add.text(680, 16, '← 菜单', {
-      fontSize: '18px', color: '#ffffff', backgroundColor: '#333333',
-      padding: { x: 10, y: 5 },
-    }).setInteractive({ useHandCursor: true }).setScrollFactor(0).setDepth(20);
-
-    backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
-
-    this.add.text(400, 560, '方向键移动 • 空格攻击 • 走到污染体上自动拾取 • 回净化站卸货', {
-      fontSize: '14px', color: '#666666',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
   }
 
   // ── Input ────────────────────────────────────────────────────────────────
@@ -522,146 +315,489 @@ export class CleanupScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.shiftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+  }
+
+  // ── Monsters ─────────────────────────────────────────────────────────────
+
+  private spawnMonster(carriageIndex: number) {
+    const cx = this.carCenterX(carriageIndex);
+    const cy = CAR_Y + CAR_H / 2;
+    const container = this.add.container(cx, cy);
+    container.setDepth(6);
+
+    const body = this.add.rectangle(0, 0, MONSTER_W, MONSTER_H, 0x9933ff, 0.92);
+    body.setStrokeStyle(3, 0xcc66ff, 1);
+    const eye = this.add.circle(0, -8, 7, 0xff0000);
+    const wisp = this.add.circle(0, 0, MONSTER_W * 0.8, 0x9933ff, 0.12);
+    container.add([wisp, body, eye]);
+
+    this.tweens.add({
+      targets: [body, eye],
+      scaleX: { from: 1, to: 1.06 }, scaleY: { from: 1, to: 0.96 },
+      duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut',
+    });
+    container.setScale(0);
+    this.tweens.add({ targets: container, scale: { from: 0, to: 1 }, duration: 400, ease: 'Back.easeOut' });
+
+    this.monsters.push({
+      container, body, eye,
+      facing: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), 0).normalize(),
+      speed: MONSTER_SPEED, wanderTimer: 0, alive: true,
+      pollutionDropTimer: 0, carriageIndex,
+    });
+  }
+
+  private updateMonsters(delta: number) {
+    const dt = delta / 1000;
+    for (const m of this.monsters) {
+      if (!m.alive) continue;
+
+      const target = this.isHidden ? null : this.player;
+      if (target) {
+        const toPlayer = new Phaser.Math.Vector2(target.x - m.container.x, target.y - m.container.y);
+        const dist = toPlayer.length();
+        if (dist > 1) { toPlayer.normalize(); m.facing.lerp(toPlayer, 0.08).normalize(); }
+      } else {
+        m.wanderTimer += delta;
+        if (m.wanderTimer > 1200) {
+          m.wanderTimer = 0;
+          const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          m.facing.set(Math.cos(angle), Math.sin(angle));
+        }
+      }
+
+      const newX = m.container.x + m.facing.x * m.speed * dt;
+      const newY = m.container.y + m.facing.y * m.speed * dt;
+      const moved = this.moveMonsterWithDoors(m, newX, newY);
+      if (!moved.x) m.facing.x *= -1;
+      if (!moved.y) m.facing.y *= -1;
+
+      m.eye.x = m.facing.x * 10;
+      m.eye.y = m.facing.y * 10 - 4;
+
+      m.pollutionDropTimer += delta;
+      if (m.pollutionDropTimer > 800) {
+        m.pollutionDropTimer = 0;
+        this.addPollution(m.carriageIndex, 2.5);
+      }
+
+      if (!this.isHidden) {
+        const killDist = Phaser.Math.Distance.Between(m.container.x, m.container.y, this.player.x, this.player.y);
+        if (killDist < (MONSTER_W + PLAYER_SIZE) / 2) {
+          this.die('被怪物触碰——瞬间死亡！');
+          return;
+        }
+      }
+    }
+    this.monsters = this.monsters.filter(m => { if (!m.alive) { m.container.destroy(); return false; } return true; });
+  }
+
+  private moveMonsterWithDoors(m: Monster, newX: number, newY: number): { x: boolean; y: boolean } {
+    const halfW = MONSTER_W / 2;
+    const halfH = MONSTER_H / 2;
+    let movedX = false, movedY = false;
+
+    if (!this.isBlockedForMonster(newX, m.container.y, halfW, halfH, m.carriageIndex)) {
+      m.container.x = newX; movedX = true;
+      m.carriageIndex = this.getCarriageAt(m.container.x);
+    }
+    if (!this.isBlockedForMonster(m.container.x, newY, halfW, halfH, m.carriageIndex)) {
+      m.container.y = newY; movedY = true;
+    }
+    const minY = CAR_Y + halfH + 4;
+    const maxY = CAR_Y + CAR_H - halfH - 4;
+    if (m.container.y < minY) { m.container.y = minY; movedY = false; }
+    if (m.container.y > maxY) { m.container.y = maxY; movedY = false; }
+    return { x: movedX, y: movedY };
+  }
+
+  private isBlockedForMonster(x: number, y: number, halfW: number, halfH: number, currentCar: number): boolean {
+    if (y - halfH < CAR_Y + 4 || y + halfH > CAR_Y + CAR_H - 4) return true;
+    for (const spot of this.hideSpots) {
+      if (this.rectOverlap(x - halfW, y - halfH, halfW * 2, halfH * 2, spot.x, spot.y, spot.w, spot.h)) return true;
+    }
+    const carAtX = this.getCarriageAt(x);
+    if (carAtX !== currentCar) {
+      const doorBetween = this.findDoorBetween(currentCar, carAtX);
+      if (doorBetween && doorBetween.sealed) return true;
+    }
+    return false;
+  }
+
+  private findDoorBetween(carA: number, carB: number): DoorDef | null {
+    const lo = Math.min(carA, carB);
+    const hi = Math.max(carA, carB);
+    if (hi - lo !== 1) return null;
+    return this.doors.find(d =>
+      (d.carriageIndex === lo && d.side === 'back') ||
+      (d.carriageIndex === hi && d.side === 'front')
+    ) || null;
+  }
+
+  private getCarriageAt(x: number): number {
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      if (x >= this.carLeftX(i) && x <= this.carRightX(i)) return i;
+    }
+    if (x < FIRST_CAR_X) return 0;
+    return CAR_COUNT;
+  }
+
+  // ── Pollution (红色涂抹) ─────────────────────────────────────────────────
+
+  private addPollution(carriageIndex: number, amount: number) {
+    if (carriageIndex < 1 || carriageIndex > CAR_COUNT) return;
+    this.pollutionLevels[carriageIndex] = Math.min(POLLUTION_MAX, this.pollutionLevels[carriageIndex] + amount);
+    this.redrawPollution(carriageIndex);
+  }
+
+  // 重绘某节车厢的红色涂抹
+  private redrawPollution(carriageIndex: number) {
+    const texKey = `pollution-car-${carriageIndex}`;
+    const canvas = this.textures.get(texKey).getSourceImage() as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, CAR_W, CAR_H);
+
+    const level = this.pollutionLevels[carriageIndex];
+    if (level <= 0) return;
+
+    const alpha = Math.min(0.85, level / POLLUTION_MAX * 0.9);
+    ctx.fillStyle = `rgba(140, 20, 30, ${alpha})`;
+    const rng = this.makeRng(carriageIndex * 9173);
+    const blobCount = Math.floor(level / 8) + 2;
+    for (let i = 0; i < blobCount; i++) {
+      const bx = rng() * CAR_W;
+      const by = rng() * CAR_H;
+      const br = 20 + rng() * 50 + level * 0.3;
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (level > POLLUTION_HIGH_THRESHOLD) {
+      ctx.fillStyle = `rgba(90, 10, 20, ${alpha * 0.8})`;
+      for (let i = 0; i < blobCount; i++) {
+        const bx = rng() * CAR_W;
+        const by = rng() * CAR_H;
+        const br = 10 + rng() * 25;
+        ctx.beginPath();
+        ctx.arc(bx, by, br, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    const img = this.pollutionCanvases[carriageIndex - 1];
+    if (img) img.setTexture(texKey);
+  }
+
+  private makeRng(seed: number): () => number {
+    let s = seed;
+    return () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
+  }
+
+  // 玩家吸取残秽：擦除玩家附近的红色像素
+  private cleanAtPlayer(delta: number) {
+    if (this.carrying >= this.carryCapacity) return;
+    const car = this.getCarriageAt(this.player.x);
+    if (car < 1 || car > CAR_COUNT) return;
+    if (this.pollutionLevels[car] <= 0) return;
+
+    const texKey = `pollution-car-${car}`;
+    const canvas = this.textures.get(texKey).getSourceImage() as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+    const localX = this.player.x - this.carLeftX(car);
+    const localY = this.player.y - CAR_Y;
+    const radius = 45;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(localX, localY, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    this.pollutionLevels[car] = Math.max(0, this.pollutionLevels[car] - 0.04 * delta);
+    const img = this.pollutionCanvases[car - 1];
+    if (img) img.setTexture(texKey);
+    this.carrying = Math.min(this.carryCapacity, this.carrying + 0.02 * delta);
+  }
+
+  // ── Player Movement ──────────────────────────────────────────────────────
+
+  private handlePlayerMovement(delta: number) {
+    if (this.isHidden) return;
+
+    let speed = PLAYER_SPEED;
+    if (this.carrying > 0) speed = PLAYER_CARRY_SPEED;
+    if (this.isCleaning) speed = PLAYER_CLEAN_SPEED;
+
+    const dt = delta / 1000;
+    let vx = 0, vy = 0;
+    if (this.cursors.left.isDown) vx -= 1;
+    if (this.cursors.right.isDown) vx += 1;
+    if (this.cursors.up.isDown) vy -= 1;
+    if (this.cursors.down.isDown) vy += 1;
+
+    if (vx !== 0 && vy !== 0) {
+      const len = Math.sqrt(vx * vx + vy * vy);
+      vx = (vx / len) * speed; vy = (vy / len) * speed;
+    }
+    const half = PLAYER_SIZE / 2;
+
+    if (vx !== 0) {
+      const newX = this.player.x + vx * dt;
+      if (!this.isBlockedForPlayer(newX, this.player.y, half)) this.player.x = newX;
+    }
+    if (vy !== 0) {
+      const newY = this.player.y + vy * dt;
+      if (!this.isBlockedForPlayer(this.player.x, newY, half)) this.player.y = newY;
+    }
+    this.player.y = Phaser.Math.Clamp(this.player.y, CAR_Y + half + 2, CAR_Y + CAR_H - half - 2);
+  }
+
+  private isBlockedForPlayer(x: number, y: number, half: number): boolean {
+    if (y - half < CAR_Y + 2 || y + half > CAR_Y + CAR_H - 2) return true;
+    for (const spot of this.hideSpots) {
+      if (this.rectOverlap(x - half, y - half, half * 2, half * 2, spot.x, spot.y, spot.w, spot.h)) return true;
+    }
+    const car = this.getCarriageAt(x);
+    const currentCar = this.getCarriageAt(this.player.x);
+    if (car !== currentCar) {
+      const door = this.findDoorBetween(currentCar, car);
+      if (door && door.sealed) return true;
+    }
+    return false;
+  }
+
+  private rectOverlap(x1: number, y1: number, w1: number, h1: number, x2: number, y2: number, w2: number, h2: number): boolean {
+    return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+  }
+
+  // ── Actions: Clean / Deposit / Seal / Hide ───────────────────────────────
+
+  private handleActions(delta: number) {
+    if (this.spaceKey.isDown && !this.isHidden) {
+      this.isCleaning = true;
+      this.cleanAtPlayer(delta);
+    } else {
+      this.isCleaning = false;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.shiftKey)) {
+      this.tryInteract();
+    }
+  }
+
+  private tryInteract() {
+    // 1. 拾取封锁器
+    if (!this.hasSealer && this.sealersRemaining > 0) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.sealerPickup.x, this.sealerPickup.y);
+      if (d < SEALER_PICKUP_RANGE) {
+        this.hasSealer = true;
+        this.sealersRemaining--;
+        this.showMessage('拾取了封锁器！走到门前按 Shift 封锁', 1500);
+        return;
+      }
+    }
+    // 2. 封锁门
+    if (this.hasSealer) {
+      const door = this.findNearestDoor(this.player.x, this.player.y, 40);
+      if (door && !door.sealed) { this.sealDoor(door); return; }
+    }
+    // 3. 投喂残秽
+    if (this.carrying > 0) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.depositZone.x, this.depositZone.y);
+      if (d < 55) {
+        this.fuel = Math.min(FUEL_MAX, this.fuel + FUEL_PER_DEPOSIT * this.carrying);
+        this.carrying = 0;
+        this.cameras.main.flash(200, 0, 255, 100);
+        this.showMessage('残秽已转化为燃料！', 1000);
+        return;
+      }
+    }
+    // 4. 躲藏
+    const spot = this.findNearestHideSpot(this.player.x, this.player.y, 35);
+    if (spot) {
+      if (!this.isHidden) this.enterHide(spot);
+      else this.exitHide();
+      return;
+    }
+  }
+
+  private findNearestDoor(x: number, y: number, range: number): DoorDef | null {
+    let nearest: DoorDef | null = null; let minD = range;
+    for (const door of this.doors) {
+      const d = Phaser.Math.Distance.Between(x, y, door.x, door.y);
+      if (d < minD) { minD = d; nearest = door; }
+    }
+    return nearest;
+  }
+
+  private findNearestHideSpot(x: number, y: number, range: number): HideSpot | null {
+    let nearest: HideSpot | null = null; let minD = range;
+    for (const spot of this.hideSpots) {
+      const cx = spot.x + spot.w / 2; const cy = spot.y + spot.h / 2;
+      const d = Phaser.Math.Distance.Between(x, y, cx, cy);
+      if (d < minD) { minD = d; nearest = spot; }
+    }
+    return nearest;
+  }
+
+  // 封锁一扇门，连带封锁另一侧
+  private sealDoor(door: DoorDef) {
+    door.sealed = true;
+    this.hasSealer = false;
+    const seal = this.add.rectangle(door.x, door.y, CAR_GAP - 6, CAR_H - 12, 0xff6644, 0.7);
+    seal.setStrokeStyle(2, 0xffaa66, 1); seal.setDepth(4);
+    door.sealGraphic = seal;
+
+    let other: DoorDef | undefined;
+    if (door.side === 'front' && door.carriageIndex > 1) {
+      other = this.doors.find(d => d.carriageIndex === door.carriageIndex - 1 && d.side === 'back');
+    } else if (door.side === 'back' && door.carriageIndex < CAR_COUNT) {
+      other = this.doors.find(d => d.carriageIndex === door.carriageIndex + 1 && d.side === 'front');
+    }
+    if (other && !other.sealed) {
+      other.sealed = true;
+      const seal2 = this.add.rectangle(other.x, other.y, CAR_GAP - 6, CAR_H - 12, 0xff6644, 0.7);
+      seal2.setStrokeStyle(2, 0xffaa66, 1); seal2.setDepth(4);
+      other.sealGraphic = seal2;
+      this.showMessage(`封锁了 ${door.carriageIndex} 号门，连带封锁对侧！`, 1800);
+    } else {
+      this.showMessage(`封锁了 ${door.carriageIndex} 号门！`, 1500);
+    }
+  }
+
+  private enterHide(spot: HideSpot) {
+    this.isHidden = true; this.hiddenSpot = spot; spot.occupied = true;
+    this.player.x = spot.x + spot.w / 2; this.player.y = spot.y + spot.h / 2;
+    this.player.setFillStyle(0x226688);
+    this.showMessage('躲藏中！怪物无法发现你。再按 Shift 离开', 2000);
+  }
+
+  private exitHide() {
+    this.isHidden = false;
+    if (this.hiddenSpot) {
+      this.player.x = this.hiddenSpot.x + this.hiddenSpot.w / 2;
+      this.player.y = this.hiddenSpot.y + this.hiddenSpot.h + 15;
+      this.hiddenSpot.occupied = false; this.hiddenSpot = null;
+    }
+    this.player.setFillStyle(0x44ddff);
+  }
+
+  // ── Pollution Spread ─────────────────────────────────────────────────────
+
+  private updatePollutionSpread(delta: number) {
+    const dt = delta / 1000;
+    const speedFactor = this.fuel <= 0 ? 2.5 : (this.fuel < 25 ? 1.6 : 1.0);
+
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      if (this.pollutionLevels[i] > POLLUTION_HIGH_THRESHOLD) {
+        if (i > 1) {
+          this.pollutionLevels[i - 1] = Math.min(POLLUTION_MAX, this.pollutionLevels[i - 1] + POLLUTION_SPREAD_RATE * dt * speedFactor);
+          this.redrawPollution(i - 1);
+        }
+        if (i < CAR_COUNT) {
+          this.pollutionLevels[i + 1] = Math.min(POLLUTION_MAX, this.pollutionLevels[i + 1] + POLLUTION_SPREAD_RATE * dt * speedFactor);
+          this.redrawPollution(i + 1);
+        }
+      }
+    }
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      if (this.pollutionLevels[i] >= POLLUTION_MAX) {
+        this.pollutionHighTimer[i] += delta;
+        if (this.pollutionHighTimer[i] > 8000) { this.die(`${i}号车厢残秽浓度爆表，列车被吞没！`); return; }
+      } else { this.pollutionHighTimer[i] = 0; }
+    }
+  }
+
+  // ── Fuel / Distance ──────────────────────────────────────────────────────
+
+  private updateFuelDistance(delta: number) {
+    const dt = delta / 1000;
+    this.fuel -= FUEL_DRAIN_RATE * dt;
+    if (this.fuel < 0) this.fuel = 0;
+
+    if (this.fuel > 0) {
+      const speedRatio = this.fuel > 70 ? 1.0 : (this.fuel > 25 ? 0.6 : 0.3);
+      this.distanceLeft -= 8 * speedRatio * dt;
+      this.stallTimer = 0;
+      if (this.distanceLeft <= 0) { this.distanceLeft = 0; this.win(); return; }
+    } else {
+      this.stallTimer += delta;
+      if (this.stallTimer >= STALL_DEATH_TIME) { this.die('列车熄火过久，残秽吞没全车！'); return; }
+    }
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────────────
+
+  private createUI() {
+    this.fuelText = this.add.text(16, 16, '燃料: 100%', { fontSize: '18px', color: '#ffaa44' }).setScrollFactor(0).setDepth(20);
+    this.distText = this.add.text(16, 40, '距下一站: 1000m', { fontSize: '18px', color: '#44ddff' }).setScrollFactor(0).setDepth(20);
+    this.carryText = this.add.text(16, 64, '携带残秽: 0/1', { fontSize: '18px', color: '#ff6666' }).setScrollFactor(0).setDepth(20);
+    this.sealerText = this.add.text(16, 88, '封锁器: 未携带 (库存4)', { fontSize: '16px', color: '#ffcc66' }).setScrollFactor(0).setDepth(20);
+    this.pollutionText = this.add.text(16, 110, '残秽: ', { fontSize: '14px', color: '#ff4444' }).setScrollFactor(0).setDepth(20);
+
+    this.messageText = this.add.text(400, 540, '', {
+      fontSize: '20px', color: '#ffffff', align: 'center',
+      backgroundColor: '#000000', padding: { x: 16, y: 8 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
+
+    const backBtn = this.add.text(680, 16, '← 菜单', {
+      fontSize: '18px', color: '#ffffff', backgroundColor: '#333333', padding: { x: 10, y: 5 },
+    }).setInteractive({ useHandCursor: true }).setScrollFactor(0).setDepth(20);
+    backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
+
+    this.add.text(400, 575, '方向键移动 • 空格吸取残秽 • Shift交互(拾取/封锁/投喂/躲藏) • 被怪物碰到即死', {
+      fontSize: '13px', color: '#666666',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
+  }
+
+  private updateUI() {
+    this.fuelText.setText(`燃料: ${Math.ceil(this.fuel)}%`);
+    this.fuelText.setColor(this.fuel < 25 ? '#ff4444' : (this.fuel < 50 ? '#ffaa44' : '#44ff44'));
+    this.distText.setText(`距下一站: ${Math.ceil(this.distanceLeft)}m`);
+    this.carryText.setText(`携带残秽: ${this.carrying.toFixed(1)}/${this.carryCapacity}`);
+    this.sealerText.setText(this.hasSealer ? '封锁器: 携带中' : `封锁器: 未携带 (库存${this.sealersRemaining})`);
+
+    let pStr = '残秽: ';
+    for (let i = 1; i <= CAR_COUNT; i++) { pStr += `${i}号:${Math.ceil(this.pollutionLevels[i])}% `; }
+    this.pollutionText.setText(pStr);
   }
 
   // ── Update Loop ──────────────────────────────────────────────────────────
 
   update(_time: number, delta: number) {
     if (this.isDead || this.isWon) return;
-
-    if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
-      this.scene.start('MenuScene');
-      return;
-    }
-
+    if (Phaser.Input.Keyboard.JustDown(this.escKey)) { this.scene.start('MenuScene'); return; }
     this.handlePlayerMovement(delta);
-    this.handleAttack();
+    this.handleActions(delta);
     this.updateMonsters(delta);
-    this.checkCollect();
-    this.checkDeposit();
-    this.drawAttackArc(delta);
-    this.updateSpawning(delta);
-    this.updateTimers(delta);
+    this.updatePollutionSpread(delta);
+    this.updateFuelDistance(delta);
     this.updateUI();
-
-    if (this.attackCooldown > 0) this.attackCooldown -= delta;
-  }
-
-  // ── Player Movement ──────────────────────────────────────────────────────
-
-  private handlePlayerMovement(delta: number) {
-    const speed = 170;
-    const dt = delta / 1000;
-
-    let vx = 0, vy = 0;
-    if (this.cursors.left.isDown) vx -= speed;
-    if (this.cursors.right.isDown) vx += speed;
-    if (this.cursors.up.isDown) vy -= speed;
-    if (this.cursors.down.isDown) vy += speed;
-
-    if (vx !== 0 && vy !== 0) {
-      const len = Math.sqrt(vx * vx + vy * vy);
-      vx = (vx / len) * speed;
-      vy = (vy / len) * speed;
-    }
-
-    const halfSize = 11;
-    if (vx !== 0) {
-      const dx = vx * dt;
-      const newX = this.player.x + dx;
-      const edgeX = newX + (dx > 0 ? halfSize : -halfSize);
-      if (!this.isObstacleAt(edgeX, this.player.y - halfSize, halfSize) &&
-          !this.isObstacleAt(edgeX, this.player.y + halfSize, halfSize)) {
-        this.player.x = newX;
-      }
-    }
-    if (vy !== 0) {
-      const dy = vy * dt;
-      const newY = this.player.y + dy;
-      const edgeY = newY + (dy > 0 ? halfSize : -halfSize);
-      if (!this.isObstacleAt(this.player.x - halfSize, edgeY, halfSize) &&
-          !this.isObstacleAt(this.player.x + halfSize, edgeY, halfSize)) {
-        this.player.y = newY;
-      }
-    }
-  }
-
-  // ── Spawning ─────────────────────────────────────────────────────────────
-
-  private updateSpawning(delta: number) {
-    this.spawnTimer += delta;
-    if (this.spawnTimer >= this.spawnInterval) {
-      this.spawnTimer = 0;
-      const aliveCount = this.monsters.filter(m => m.alive).length;
-      if (aliveCount < this.maxMonsters) {
-        this.spawnMonster();
-      }
-    }
-  }
-
-  // ── Timers ───────────────────────────────────────────────────────────────
-
-  private updateTimers(delta: number) {
-    this.timeLimit -= delta;
-    if (this.timeLimit <= 0) {
-      this.timeLimit = 0;
-      this.die('时间耗尽，污染失控！');
-      return;
-    }
-
-    const totalPollution = this.totalPollutionOnMap();
-    if (totalPollution >= this.pollutionCap) {
-      this.die('污染总量超标，任务失败！');
-      return;
-    }
-  }
-
-  // ── UI Update ────────────────────────────────────────────────────────────
-
-  private updateUI() {
-    this.healthText.setText(`生命: ${Math.max(0, Math.ceil(this.health))}`);
-    this.carryText.setText(`携带: ${this.carrying}/${this.carryCapacity}`);
-    this.depositedText.setText(`已净化: ${Math.min(this.deposited, this.goal)}/${this.goal}`);
-    this.timerText.setText(`时间: ${Math.ceil(this.timeLimit / 1000)}s`);
-    const total = this.totalPollutionOnMap();
-    this.pollutionText.setText(`污染: ${total}/${this.pollutionCap}`);
-    this.pollutionText.setColor(total > this.pollutionCap * 0.7 ? '#ff0000' : '#ff4444');
   }
 
   // ── Win / Lose ───────────────────────────────────────────────────────────
 
   private win() {
     this.isWon = true;
-    this.showMessage('🎉 净化完成！\n车厢已恢复安全！\n\n按ESC返回菜单');
+    this.showMessage('🎉 到站！列车安全抵达下一站！\n\n按ESC返回菜单', 999999);
   }
 
   private die(cause: string) {
+    if (this.isDead) return;
     this.isDead = true;
     this.player.setFillStyle(0x666666);
-    this.showMessage(`💀 ${cause}\n\n按ESC返回菜单`);
+    this.cameras.main.shake(300, 0.02);
+    this.showMessage(`💀 ${cause}\n\n按ESC返回菜单`, 999999);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  private showMessage(text: string) {
+  private showMessage(text: string, duration: number = 2000) {
     this.messageText.setText(text);
     this.messageText.setVisible(true);
-  }
-
-  private isObstacleAt(px: number, py: number, _halfSize: number): boolean {
-    for (const obs of this.obstacles) {
-      if (px >= obs.x && px <= obs.x + obs.w && py >= obs.y && py <= obs.y + obs.h) return true;
+    if (this.messageTimer) clearTimeout(this.messageTimer);
+    if (duration < 999999) {
+      this.messageTimer = window.setTimeout(() => { this.messageText.setVisible(false); }, duration);
     }
-    return false;
-  }
-
-  private isInsideObstacle(x: number, y: number, radius: number): boolean {
-    for (const obs of this.obstacles) {
-      const closestX = Phaser.Math.Clamp(x, obs.x, obs.x + obs.w);
-      const closestY = Phaser.Math.Clamp(y, obs.y, obs.y + obs.h);
-      const dist = Phaser.Math.Distance.Between(x, y, closestX, closestY);
-      if (dist < radius) return true;
-    }
-    return false;
   }
 }

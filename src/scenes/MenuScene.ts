@@ -30,8 +30,8 @@ export class MenuScene extends Phaser.Scene {
     },
     {
       key: 'CleanupScene',
-      name: '清理污染体',
-      description: '消灭怪物、收集污染体运到净化站，限时内净化足够量通关！',
+      name: '末班地铁',
+      description: '怪物在车厢间穿行留下致命残秽，吸取残秽喂给列车跑到下一站！被怪物碰到即死！',
     },
     // Add new prototypes here
   ];
