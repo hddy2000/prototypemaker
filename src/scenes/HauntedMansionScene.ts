@@ -93,7 +93,6 @@ export class HauntedMansionScene extends Phaser.Scene {
 
   // Player stats
   private health = 100;
-  private maxHealth = 100;
   private debuffs: Debuff[] = [];
 
   // UI

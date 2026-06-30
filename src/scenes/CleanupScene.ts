@@ -48,7 +48,6 @@ export class CleanupScene extends Phaser.Scene {
 
   // Player stats
   private health = 100;
-  private maxHealth = 100;
   private carrying = 0;          // pollution currently being carried
   private carryCapacity = 10;    // max carry per trip
 
