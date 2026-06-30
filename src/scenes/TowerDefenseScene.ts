@@ -41,17 +41,17 @@ interface WaveDef {
 
 const TOWER_DEFS: TowerDef[] = [
   {
-    key: 'basic', name: 'Basic', color: 0x4488ff, range: 130,
+    key: 'basic', name: '基础塔', color: 0x4488ff, range: 130,
     damage: 10, fireRate: 600, upgradeCost: 50,
     bulletColor: 0x88bbff, bulletSpeed: 350,
   },
   {
-    key: 'sniper', name: 'Sniper', color: 0xff4444, range: 250,
+    key: 'sniper', name: '狙击塔', color: 0xff4444, range: 250,
     damage: 40, fireRate: 1500, upgradeCost: 80,
     bulletColor: 0xff8888, bulletSpeed: 600,
   },
   {
-    key: 'splash', name: 'Splash', color: 0x44dd44, range: 110,
+    key: 'splash', name: '溅射塔', color: 0x44dd44, range: 110,
     damage: 15, fireRate: 1000, upgradeCost: 100,
     bulletColor: 0x88ff88, bulletSpeed: 250, splash: 60,
   },
@@ -172,7 +172,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     // ─── Warehouse zone (bottom-left) ────────────────────────────────
     const warehouseBg = this.add.rectangle(75, 520, 140, 150, 0x2a2a3e, 0.8);
     warehouseBg.setStrokeStyle(2, 0x555577);
-    this.add.text(75, 450, 'WAREHOUSE', {
+    this.add.text(75, 450, '仓库', {
       fontSize: '12px', color: '#777799',
     }).setOrigin(0.5);
 
@@ -257,7 +257,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.waveText = this.add.text(400, 10, '', { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5, 0).setDepth(50);
     this.coreHpText = this.add.text(400, 315, '', { fontSize: '11px', color: '#ffffff' }).setOrigin(0.5, 0).setDepth(50);
     this.statusText = this.add.text(400, 580, '', { fontSize: '14px', color: '#00ffaa' }).setOrigin(0.5).setDepth(50);
-    this.hintText = this.add.text(400, 460, 'Push towers out of warehouse, then walk into them to carry!\nPlace on glowing slots around the core. [E] to upgrade nearby towers.', {
+    this.hintText = this.add.text(400, 460, '将塔从仓库推出，然后走进即可搬运！\n放置到核心周围的发光槽位上。按 [E] 升级附近的塔。', {
       fontSize: '12px', color: '#888888', align: 'center',
     }).setOrigin(0.5).setDepth(50);
 
@@ -451,8 +451,8 @@ export class TowerDefenseScene extends Phaser.Scene {
 
   private updateUI() {
     this.moneyText.setText(`$ ${this.money}`);
-    this.scoreText.setText(`Score: ${this.score}`);
-    this.waveText.setText(this.waveActive ? `Wave ${this.wave}` : (this.betweenWaves ? `[SPACE] Start Wave ${this.wave + 1}` : ''));
+    this.scoreText.setText(`分数: ${this.score}`);
+    this.waveText.setText(this.waveActive ? `第 ${this.wave} 波` : (this.betweenWaves ? `[空格] 开始第 ${this.wave + 1} 波` : ''));
     this.coreHpText.setText(`${this.coreHp}/${this.coreMaxHp}`);
   }
 
@@ -498,7 +498,7 @@ export class TowerDefenseScene extends Phaser.Scene {
           this.carriedTower.rect.destroy();
           this.carriedTower = null;
           this.placeTower(defIndex, slotIdx);
-          this.statusText.setText('Tower placed!');
+          this.statusText.setText('塔已放置！');
           this.time.delayedCall(1500, () => {
             if (!this.gameOver) this.statusText.setText('');
           });
@@ -552,13 +552,13 @@ export class TowerDefenseScene extends Phaser.Scene {
             yoyo: true,
             repeat: 2,
           });
-          this.statusText.setText(`${tower.data.def.name} upgraded to Lv.${tower.data.level}!`);
+          this.statusText.setText(`${tower.data.def.name} 升级到 Lv.${tower.data.level}！`);
           this.time.delayedCall(1500, () => {
             if (!this.gameOver) this.statusText.setText('');
           });
           this.updateUI();
         } else {
-          this.statusText.setText(`Need $${upgCost} to upgrade!`);
+          this.statusText.setText(`需要 $${upgCost} 才能升级！`);
           this.time.delayedCall(1500, () => {
             if (!this.gameOver) this.statusText.setText('');
           });
@@ -584,7 +584,7 @@ export class TowerDefenseScene extends Phaser.Scene {
           cBody.setVelocity(0, 0);
           wt.rect.setAlpha(0.8);
           wt.rect.setDepth(10);
-          this.statusText.setText(`Carrying ${TOWER_DEFS[wt.defIndex].name} tower - move to a slot & press [SPACE]`);
+          this.statusText.setText(`正在搬运 ${TOWER_DEFS[wt.defIndex].name} - 移动到槽位并按 [空格]`);
           break;
         }
       }
@@ -624,7 +624,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       const tower = this.placedTowers[this.nearPlacedTowerIdx];
       const upgCost = Math.floor(tower.data.def.upgradeCost * tower.data.level);
       this.upgradePrompt.setPosition(tower.rect.x, tower.rect.y - 30);
-      this.upgradePrompt.setText(`[E] Upgrade Lv.${tower.data.level} ($${upgCost})`);
+      this.upgradePrompt.setText(`[E] 升级 Lv.${tower.data.level} ($${upgCost})`);
       this.upgradePrompt.setColor(this.money >= upgCost ? '#44ff44' : '#ff4444');
       this.upgradePrompt.setVisible(true);
     } else {
@@ -787,7 +787,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         cBody.setVelocity(0, 0);
         wt.rect.setAlpha(0.8);
         wt.rect.setDepth(10);
-        this.statusText.setText(`Carrying ${TOWER_DEFS[wt.defIndex].name} - move to slot & [SPACE]`);
+        this.statusText.setText(`正在搬运 ${TOWER_DEFS[wt.defIndex].name} - 移动到槽位并按 [空格]`);
         return true;
       }
     }
@@ -848,7 +848,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         newRect.setAlpha(0.8);
         newRect.setDepth(10);
 
-        this.statusText.setText(`Carrying Lv.${level} ${TOWER_DEFS[defIndex].name} - move to slot & [SPACE]`);
+        this.statusText.setText(`正在搬运 Lv.${level} ${TOWER_DEFS[defIndex].name} - 移动到槽位并按 [空格]`);
         return true;
       }
     }
@@ -861,23 +861,23 @@ export class TowerDefenseScene extends Phaser.Scene {
     const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.7);
     overlay.setDepth(200);
 
-    this.add.text(400, 220, 'GAME OVER', {
+    this.add.text(400, 220, '游戏结束', {
       fontSize: '48px', color: '#ff4444', fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(201);
 
-    this.add.text(400, 290, `Score: ${this.score}`, {
+    this.add.text(400, 290, `分数: ${this.score}`, {
       fontSize: '28px', color: '#ffffff',
     }).setOrigin(0.5).setDepth(201);
 
-    this.add.text(400, 330, `Waves Survived: ${this.wave}`, {
+    this.add.text(400, 330, `坚持波数: ${this.wave}`, {
       fontSize: '22px', color: '#aaaaaa',
     }).setOrigin(0.5).setDepth(201);
 
-    const restartBtn = this.add.text(400, 400, '[ Restart ]', {
+    const restartBtn = this.add.text(400, 400, '[ 重新开始 ]', {
       fontSize: '24px', color: '#44ff44',
     }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
 
-    const menuBtn = this.add.text(400, 440, '[ Back to Menu ]', {
+    const menuBtn = this.add.text(400, 440, '[ 返回菜单 ]', {
       fontSize: '20px', color: '#aaaaaa',
     }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
 

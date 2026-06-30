@@ -374,7 +374,7 @@ export class EscortScene extends Phaser.Scene {
   // ─── UI ───────────────────────────────────────────────────────
 
   private createUI() {
-    this.healthText = this.add.text(16, 16, 'HP: 100', {
+    this.healthText = this.add.text(16, 16, '生命: 100', {
       fontSize: '18px',
       color: '#ffffff',
     }).setScrollFactor(0).setDepth(20);
@@ -400,7 +400,7 @@ export class EscortScene extends Phaser.Scene {
       align: 'center',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
 
-    const backBtn = this.add.text(680, 16, '← Menu', {
+    const backBtn = this.add.text(680, 16, '← 菜单', {
       fontSize: '18px',
       color: '#ffffff',
       backgroundColor: '#333333',
@@ -733,7 +733,7 @@ export class EscortScene extends Phaser.Scene {
 
       if (dist < 30) {
         this.health -= 15;
-        this.healthText.setText(`HP: ${this.health}`);
+        this.healthText.setText(`生命: ${this.health}`);
         this.damageCooldown = 800;
 
         // 击退

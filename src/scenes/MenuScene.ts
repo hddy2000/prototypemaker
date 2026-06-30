@@ -23,6 +23,16 @@ export class MenuScene extends Phaser.Scene {
       name: '物理塔防',
       description: '拖拽塔防御核心，用怪物掉落物升级！',
     },
+    {
+      key: 'HauntedMansionScene',
+      name: '鬼屋探秘',
+      description: '在鬼屋房间中扫描线索，躲避陷阱与鬼魂，发现所有秘密！',
+    },
+    {
+      key: 'CleanupScene',
+      name: '清理污染体',
+      description: '消灭怪物、收集污染体运到净化站，限时内净化足够量通关！',
+    },
     // Add new prototypes here
   ];
 
@@ -40,7 +50,7 @@ export class MenuScene extends Phaser.Scene {
       color: '#ffffff',
     }).setOrigin(0.5);
 
-    this.add.text(400, 130, 'Select a prototype:', {
+    this.add.text(400, 130, '选择一个原型：', {
       fontSize: '20px',
       color: '#aaaaaa',
     }).setOrigin(0.5);
@@ -82,7 +92,7 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Instructions
-    this.add.text(400, 550, '↑↓ to select • Enter to launch', {
+    this.add.text(400, 550, '↑↓ 选择 • 回车 启动', {
       fontSize: '16px',
       color: '#666666',
     }).setOrigin(0.5);

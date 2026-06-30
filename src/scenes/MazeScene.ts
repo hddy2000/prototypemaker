@@ -353,22 +353,22 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private createUI() {
-    this.healthText = this.add.text(16, 16, 'HP: 100', {
+    this.healthText = this.add.text(16, 16, '生命: 100', {
       fontSize: '18px',
       color: '#ffffff',
     }).setScrollFactor(0).setDepth(20);
 
-    this.moneyText = this.add.text(16, 40, 'Money: $0', {
+    this.moneyText = this.add.text(16, 40, '金币: $0', {
       fontSize: '18px',
       color: '#ffff00',
     }).setScrollFactor(0).setDepth(20);
 
-    this.detectorText = this.add.text(16, 64, 'Detector: Ready [SPACE] | Reveal [E]', {
+    this.detectorText = this.add.text(16, 64, '探测器: 就绪 [空格探测] | [E显形]', {
       fontSize: '16px',
       color: '#00ffff',
     }).setScrollFactor(0).setDepth(20);
 
-    this.staminaText = this.add.text(16, 88, 'Stamina: 100 [SHIFT to sprint]', {
+    this.staminaText = this.add.text(16, 88, '体力: 100 [Shift冲刺]', {
       fontSize: '16px',
       color: '#88ff88',
     }).setScrollFactor(0).setDepth(20);
@@ -380,7 +380,7 @@ export class MazeScene extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
 
     // Back to menu button
-    const backBtn = this.add.text(680, 16, '← Menu', {
+    const backBtn = this.add.text(680, 16, '← 菜单', {
       fontSize: '18px',
       color: '#ffffff',
       backgroundColor: '#333333',
@@ -451,8 +451,8 @@ export class MazeScene extends Phaser.Scene {
 
     const speed = isSprinting ? sprintSpeed : baseSpeed;
     this.staminaText.setText(
-      `Stamina: ${Math.ceil(this.stamina)}/${this.maxStamina}` +
-      (this.staminaDepleted ? ' (recovering...)' : ' [SHIFT to sprint]')
+      `体力: ${Math.ceil(this.stamina)}/${this.maxStamina}` +
+      (this.staminaDepleted ? ' (恢复中...)' : ' [Shift冲刺]')
     );
     this.staminaText.setColor(this.staminaDepleted ? '#ff8888' : (isSprinting ? '#ffff88' : '#88ff88'));
 
@@ -541,19 +541,19 @@ export class MazeScene extends Phaser.Scene {
       }
 
       if (nearestDist < this.detectorRange) {
-        this.detectorText.setText('Detector: BEEP BEEP BEEP! Press [E] to reveal!');
+        this.detectorText.setText('探测器: 滴滴滴！按 [E] 显形！');
         this.detectorText.setColor('#ff0000');
       } else if (nearestDist < this.detectorRange * 2.5) {
-        this.detectorText.setText('Detector: beep... beep...');
+        this.detectorText.setText('探测器: 滴...滴...');
         this.detectorText.setColor('#ffff00');
       } else {
-        this.detectorText.setText('Detector: ...');
+        this.detectorText.setText('探测器: ...');
         this.detectorText.setColor('#00ffff');
       }
 
       this.time.delayedCall(2000, () => {
         if (!this.isDead && !this.isEscaped) {
-          this.detectorText.setText('Detector: Ready [SPACE] | Reveal [E]');
+          this.detectorText.setText('探测器: 就绪 [空格探测] | [E显形]');
           this.detectorText.setColor('#00ffff');
         }
       });
@@ -584,7 +584,7 @@ export class MazeScene extends Phaser.Scene {
       }
 
       if (revealedAny) {
-        this.showMessage('Treasure revealed! Go pick it up!');
+        this.showMessage('宝藏已显形！快去拾取！');
         this.time.delayedCall(1500, () => this.hideMessage());
       }
     }
@@ -755,14 +755,14 @@ export class MazeScene extends Phaser.Scene {
           this.hasTreasure = true;
           // Settle money immediately on pickup
           this.money += treasure.value;
-          this.moneyText.setText(`Money: $${this.money}`);
-          this.showMessage(`Found treasure! Value: $${treasure.value}`);
+          this.moneyText.setText(`金币: $${this.money}`);
+          this.showMessage(`发现宝藏！价值: $${treasure.value}`);
           this.time.delayedCall(2000, () => this.hideMessage());
         } else if (treasure.detected) {
-          this.showMessage('Press [E] to reveal the treasure first!');
+          this.showMessage('先按 [E] 显形宝藏！');
           this.time.delayedCall(1500, () => this.hideMessage());
         } else {
-          this.showMessage('Use detector [SPACE] to locate treasure first!');
+          this.showMessage('先用探测器 [空格] 定位宝藏！');
           this.time.delayedCall(1500, () => this.hideMessage());
         }
       }
@@ -786,7 +786,7 @@ export class MazeScene extends Phaser.Scene {
             case 'wanderer':  dmg = 8;  break;
           }
           this.health -= dmg;
-          this.healthText.setText(`HP: ${this.health}`);
+          this.healthText.setText(`生命: ${this.health}`);
           this.damageCooldown = 800; // 0.8s invulnerability
 
           // Knockback player away from monster
@@ -821,13 +821,13 @@ export class MazeScene extends Phaser.Scene {
   private die() {
     this.isDead = true;
     this.player.setFillStyle(0x666666);
-    this.showMessage('You died!\nAll treasure lost...\n\nPress ESC to return to menu');
+    this.showMessage('你死了！\n所有宝藏丢失...\n\n按ESC返回菜单');
   }
 
   private escape() {
     this.isEscaped = true;
     // Money was already added on pickup; just show the escape summary.
-    this.showMessage(`Escaped!\nTotal: $${this.money}\n\nPress ESC to return to menu`);
+    this.showMessage(`成功逃脱！\n总计: $${this.money}\n\n按ESC返回菜单`);
   }
 
   private showMessage(text: string) {

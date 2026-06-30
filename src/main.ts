@@ -4,6 +4,8 @@ import { MenuScene } from './scenes/MenuScene';
 import { MazeScene } from './scenes/MazeScene';
 import { EscortScene } from './scenes/EscortScene';
 import { TowerDefenseScene } from './scenes/TowerDefenseScene';
+import { HauntedMansionScene } from './scenes/HauntedMansionScene';
+import { CleanupScene } from './scenes/CleanupScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -16,7 +18,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene],
 };
 
 new Phaser.Game(config);
