@@ -16,6 +16,7 @@ interface DoorDef {
   side: 'front' | 'back'; // front = 朝车头方向, back = 朝车尾方向
   sealed: boolean;        // 是否被封锁
   sealGraphic?: Phaser.GameObjects.Rectangle;
+  sealTimer: number;      // 封锁后累计计时，到时自动解除
 }
 
 interface HideSpot {
@@ -26,7 +27,7 @@ interface HideSpot {
 
 interface Monster {
   container: Phaser.GameObjects.Container;
-  body: Phaser.GameObjects.Rectangle;
+  body: Phaser.GameObjects.Image;   // 鬼.png 贴图
   eye: Phaser.GameObjects.Arc;
   facing: Phaser.Math.Vector2;
   speed: number;
@@ -34,6 +35,7 @@ interface Monster {
   alive: boolean;
   pollutionDropTimer: number;
   carriageIndex: number;  // 当前所在车厢
+  dying: boolean;         // 正在消散
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -62,8 +64,12 @@ const MONSTER_SPEED = PLAYER_SPEED * 1.08;  // 比玩家快一点点
 
 // 残秽（红色涂抹）
 const POLLUTION_MAX = 100;        // 每节车厢残秽浓度上限
-const POLLUTION_SPREAD_RATE = 0.6;// 每秒向相邻车厢扩散
+const POLLUTION_SPREAD_RATE = 0.4;// 每秒向相邻车厢扩散
 const POLLUTION_HIGH_THRESHOLD = 60;
+const POLLUTION_NATURAL_RATE = 0.4;  // 自然生成基础速率（每秒每车厢）
+const POLLUTION_SPAWN_THRESHOLD = 85; // 超过此阈值自然生成新怪物
+const SEAL_AUTO_REMOVE_TIME = 10000;  // 封锁器10秒后自动解除（毫秒）
+const POLLUTION_DEATH_TIME = 12000;  // 浓度爆表后宽限时间（毫秒）
 
 // 燃料 / 距离
 const FUEL_MAX = 100;
@@ -91,17 +97,18 @@ export class CleanupScene extends Phaser.Scene {
   private hideSpots: HideSpot[] = [];
   private mapGraphics!: Phaser.GameObjects.Graphics;
 
-  // 残秽：每节车厢一张 canvas 纹理，红色涂抹
-  private pollutionCanvases: Phaser.GameObjects.Image[] = [];
+  // 残秽：每节车厢一个 Container，内含多个血迹贴图
+  private pollutionGraphics: Phaser.GameObjects.Container[] = [];
   private pollutionLevels: number[] = [];   // 每节车厢浓度 0..100
   private pollutionHighTimer: number[] = []; // 浓度满持续计时
+  private pollutionSpawnCooldown: number[] = []; // 新怪物生成冷却
 
   // 怪物
   private monsters: Monster[] = [];
 
   // 玩家状态
   private carrying = 0;          // 携带的残秽量
-  private carryCapacity = 1;     // 一次只能搬一份
+  private carryCapacity = 3;     // 一次可搬多份
   private isCleaning = false;    // 是否正在吸取
   private isHidden = false;      // 是否躲藏中
   private hiddenSpot: HideSpot | null = null;
@@ -185,8 +192,8 @@ export class CleanupScene extends Phaser.Scene {
       const leftX = this.carLeftX(i);
       const rightX = this.carRightX(i);
       const doorY = CAR_Y + CAR_H / 2;
-      this.doors.push({ x: rightX + CAR_GAP / 2, y: doorY, carriageIndex: i, side: 'back', sealed: false });
-      this.doors.push({ x: leftX - CAR_GAP / 2, y: doorY, carriageIndex: i, side: 'front', sealed: false });
+      this.doors.push({ x: rightX + CAR_GAP / 2, y: doorY, carriageIndex: i, side: 'back', sealed: false, sealTimer: 0 });
+      this.doors.push({ x: leftX - CAR_GAP / 2, y: doorY, carriageIndex: i, side: 'front', sealed: false, sealTimer: 0 });
     }
 
     // 每节车厢：前后各一个厕所隔间，中间两个柜子
@@ -201,6 +208,7 @@ export class CleanupScene extends Phaser.Scene {
     for (let i = 0; i <= CAR_COUNT; i++) {
       this.pollutionLevels.push(0);
       this.pollutionHighTimer.push(0);
+      this.pollutionSpawnCooldown.push(0);
     }
   }
 
@@ -246,20 +254,11 @@ export class CleanupScene extends Phaser.Scene {
       this.mapGraphics.strokeRect(door.x - CAR_GAP / 2 + 2, CAR_Y + 4, CAR_GAP - 4, CAR_H - 8);
     }
 
-    // 每节车厢的残秽 canvas 纹理
+    // 每节车厢的残秽 Container（内含血迹贴图）
     for (let i = 1; i <= CAR_COUNT; i++) {
-      const lx = this.carLeftX(i);
-      const texKey = `pollution-car-${i}`;
-      if (this.textures.exists(texKey)) this.textures.remove(texKey);
-      const canvas = this.textures.createCanvas(texKey, CAR_W, CAR_H);
-      if (canvas) {
-        const ctx = canvas.getContext();
-        ctx.clearRect(0, 0, CAR_W, CAR_H);
-      }
-      const img = this.add.image(lx, CAR_Y, texKey);
-      img.setOrigin(0, 0);
-      img.setDepth(1);
-      this.pollutionCanvases.push(img);
+      const c = this.add.container(0, 0);
+      c.setDepth(1);
+      this.pollutionGraphics.push(c);
     }
   }
 
@@ -326,15 +325,22 @@ export class CleanupScene extends Phaser.Scene {
     const container = this.add.container(cx, cy);
     container.setDepth(6);
 
-    const body = this.add.rectangle(0, 0, MONSTER_W, MONSTER_H, 0x9933ff, 0.92);
-    body.setStrokeStyle(3, 0xcc66ff, 1);
+    // 用鬼.png 贴图作为怪物主体，缩放到合适尺寸
+    const body = this.add.image(0, 0, 'ghost');
+    const scale = MONSTER_H / body.height;  // 按高度缩放
+    body.setScale(scale);
+    body.setAlpha(0.92);
+
+    // 红色眼睛跟随移动方向
     const eye = this.add.circle(0, -8, 7, 0xff0000);
+    // 雾气光晕
     const wisp = this.add.circle(0, 0, MONSTER_W * 0.8, 0x9933ff, 0.12);
     container.add([wisp, body, eye]);
 
+    // 飘动呼吸动画
     this.tweens.add({
       targets: [body, eye],
-      scaleX: { from: 1, to: 1.06 }, scaleY: { from: 1, to: 0.96 },
+      scaleX: { from: scale, to: scale * 1.06 }, scaleY: { from: scale, to: scale * 0.96 },
       duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut',
     });
     container.setScale(0);
@@ -345,6 +351,7 @@ export class CleanupScene extends Phaser.Scene {
       facing: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), 0).normalize(),
       speed: MONSTER_SPEED, wanderTimer: 0, alive: true,
       pollutionDropTimer: 0, carriageIndex,
+      dying: false,
     });
   }
 
@@ -352,6 +359,7 @@ export class CleanupScene extends Phaser.Scene {
     const dt = delta / 1000;
     for (const m of this.monsters) {
       if (!m.alive) continue;
+      if (m.dying) continue;
 
       const target = this.isHidden ? null : this.player;
       if (target) {
@@ -369,6 +377,15 @@ export class CleanupScene extends Phaser.Scene {
 
       const newX = m.container.x + m.facing.x * m.speed * dt;
       const newY = m.container.y + m.facing.y * m.speed * dt;
+
+      // 检查移动方向是否撞到封锁墙——撞到立刻消失
+      const newCar = this.getCarriageAt(newX);
+      if (newCar !== m.carriageIndex && this.isDoorSealedBetween(m.carriageIndex, newCar)) {
+        // 撞到封锁墙，立刻消散
+        this.killMonster(m);
+        continue;
+      }
+
       const moved = this.moveMonsterWithDoors(m, newX, newY);
       if (!moved.x) m.facing.x *= -1;
       if (!moved.y) m.facing.y *= -1;
@@ -377,9 +394,9 @@ export class CleanupScene extends Phaser.Scene {
       m.eye.y = m.facing.y * 10 - 4;
 
       m.pollutionDropTimer += delta;
-      if (m.pollutionDropTimer > 800) {
+      if (m.pollutionDropTimer > 1200) {
         m.pollutionDropTimer = 0;
-        this.addPollution(m.carriageIndex, 2.5);
+        this.addPollution(m.carriageIndex, 1.5);
       }
 
       if (!this.isHidden) {
@@ -391,6 +408,22 @@ export class CleanupScene extends Phaser.Scene {
       }
     }
     this.monsters = this.monsters.filter(m => { if (!m.alive) { m.container.destroy(); return false; } return true; });
+  }
+
+  /** 怪物消散：留下残秽（不解封门，门由计时器自动解除） */
+  private killMonster(m: Monster) {
+    m.dying = true;
+    // 留下残秽
+    this.addPollution(m.carriageIndex, 15);
+
+    // 消散动画
+    this.tweens.add({
+      targets: m.container,
+      alpha: 0, scale: 0.3,
+      duration: 800,
+      onComplete: () => { m.alive = false; },
+    });
+    this.showMessage(`${m.carriageIndex}号车厢的怪物撞上封锁墙消散了！`, 2000);
   }
 
   private moveMonsterWithDoors(m: Monster, newX: number, newY: number): { x: boolean; y: boolean } {
@@ -419,27 +452,31 @@ export class CleanupScene extends Phaser.Scene {
     }
     const carAtX = this.getCarriageAt(x);
     if (carAtX !== currentCar) {
-      const doorBetween = this.findDoorBetween(currentCar, carAtX);
-      if (doorBetween && doorBetween.sealed) return true;
+      if (this.isDoorSealedBetween(currentCar, carAtX)) return true;
     }
     return false;
   }
 
-  private findDoorBetween(carA: number, carB: number): DoorDef | null {
+  /** 检查两节相邻车厢之间的连接处是否有任一扇门被封锁 */
+  private isDoorSealedBetween(carA: number, carB: number): boolean {
     const lo = Math.min(carA, carB);
     const hi = Math.max(carA, carB);
-    if (hi - lo !== 1) return null;
-    return this.doors.find(d =>
-      (d.carriageIndex === lo && d.side === 'back') ||
-      (d.carriageIndex === hi && d.side === 'front')
-    ) || null;
+    if (hi - lo !== 1) return false;
+    return this.doors.some(d =>
+      (d.carriageIndex === lo && d.side === 'back' && d.sealed) ||
+      (d.carriageIndex === hi && d.side === 'front' && d.sealed)
+    );
   }
 
   private getCarriageAt(x: number): number {
     for (let i = 1; i <= CAR_COUNT; i++) {
       if (x >= this.carLeftX(i) && x <= this.carRightX(i)) return i;
     }
+    // 在车厢间隙（门区）中：返回左侧车厢编号，避免 fallback 到 CAR_COUNT
     if (x < FIRST_CAR_X) return 0;
+    for (let i = 1; i < CAR_COUNT; i++) {
+      if (x > this.carRightX(i) && x < this.carLeftX(i + 1)) return i;
+    }
     return CAR_COUNT;
   }
 
@@ -451,41 +488,33 @@ export class CleanupScene extends Phaser.Scene {
     this.redrawPollution(carriageIndex);
   }
 
-  // 重绘某节车厢的红色涂抹
+  // 重绘某节车厢的血迹泼洒（用 blood.png 贴图随机分布）
   private redrawPollution(carriageIndex: number) {
-    const texKey = `pollution-car-${carriageIndex}`;
-    const canvas = this.textures.get(texKey).getSourceImage() as HTMLCanvasElement;
-    const ctx = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, CAR_W, CAR_H);
+    const c = this.pollutionGraphics[carriageIndex - 1];
+    if (!c) return;
+    // 清除旧的血迹
+    c.removeAll(true);
 
     const level = this.pollutionLevels[carriageIndex];
     if (level <= 0) return;
 
-    const alpha = Math.min(0.85, level / POLLUTION_MAX * 0.9);
-    ctx.fillStyle = `rgba(140, 20, 30, ${alpha})`;
-    const rng = this.makeRng(carriageIndex * 9173);
+    const lx = this.carLeftX(carriageIndex);
+    const rng = this.makeRng(carriageIndex * 9173 + Math.floor(level));
     const blobCount = Math.floor(level / 8) + 2;
+
     for (let i = 0; i < blobCount; i++) {
-      const bx = rng() * CAR_W;
-      const by = rng() * CAR_H;
-      const br = 20 + rng() * 50 + level * 0.3;
-      ctx.beginPath();
-      ctx.arc(bx, by, br, 0, Math.PI * 2);
-      ctx.fill();
+      const bx = lx + rng() * CAR_W;
+      const by = CAR_Y + rng() * CAR_H;
+      const baseScale = (20 + rng() * 50 + level * 0.3) / 100;  // 血迹大小随浓度增长
+      const alpha = Math.min(0.85, level / POLLUTION_MAX * 0.9);
+
+      const splat = this.add.image(bx, by, 'blood');
+      splat.setAlpha(alpha);
+      splat.setRotation(rng() * Math.PI * 2);
+      splat.setScale(baseScale * (0.6 + rng() * 0.8));
+      splat.setTint(level > POLLUTION_HIGH_THRESHOLD ? 0x5a0a14 : 0x8c141e);
+      c.add(splat);
     }
-    if (level > POLLUTION_HIGH_THRESHOLD) {
-      ctx.fillStyle = `rgba(90, 10, 20, ${alpha * 0.8})`;
-      for (let i = 0; i < blobCount; i++) {
-        const bx = rng() * CAR_W;
-        const by = rng() * CAR_H;
-        const br = 10 + rng() * 25;
-        ctx.beginPath();
-        ctx.arc(bx, by, br, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    const img = this.pollutionCanvases[carriageIndex - 1];
-    if (img) img.setTexture(texKey);
   }
 
   private makeRng(seed: number): () => number {
@@ -493,31 +522,18 @@ export class CleanupScene extends Phaser.Scene {
     return () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
   }
 
-  // 玩家吸取残秽：擦除玩家附近的红色像素
+  // 玩家吸取残秽：降低浓度后重绘（Graphics 不支持局部擦除，整体重绘即可）
   private cleanAtPlayer(delta: number) {
     if (this.carrying >= this.carryCapacity) return;
     const car = this.getCarriageAt(this.player.x);
     if (car < 1 || car > CAR_COUNT) return;
     if (this.pollutionLevels[car] <= 0) return;
 
-    const texKey = `pollution-car-${car}`;
-    const canvas = this.textures.get(texKey).getSourceImage() as HTMLCanvasElement;
-    const ctx = canvas.getContext('2d')!;
-    const localX = this.player.x - this.carLeftX(car);
-    const localY = this.player.y - CAR_Y;
-    const radius = 45;
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.beginPath();
-    ctx.arc(localX, localY, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    this.pollutionLevels[car] = Math.max(0, this.pollutionLevels[car] - 0.04 * delta);
-    const img = this.pollutionCanvases[car - 1];
-    if (img) img.setTexture(texKey);
-    this.carrying = Math.min(this.carryCapacity, this.carrying + 0.02 * delta);
+    // 玩家附近范围内吸取，降低浓度
+    const cleanRate = 0.12 * delta;
+    this.pollutionLevels[car] = Math.max(0, this.pollutionLevels[car] - cleanRate);
+    this.redrawPollution(car);
+    this.carrying = Math.min(this.carryCapacity, this.carrying + 0.06 * delta);
   }
 
   // ── Player Movement ──────────────────────────────────────────────────────
@@ -536,7 +552,7 @@ export class CleanupScene extends Phaser.Scene {
     if (this.cursors.up.isDown) vy -= 1;
     if (this.cursors.down.isDown) vy += 1;
 
-    if (vx !== 0 && vy !== 0) {
+    if (vx !== 0 || vy !== 0) {
       const len = Math.sqrt(vx * vx + vy * vy);
       vx = (vx / len) * speed; vy = (vy / len) * speed;
     }
@@ -561,8 +577,7 @@ export class CleanupScene extends Phaser.Scene {
     const car = this.getCarriageAt(x);
     const currentCar = this.getCarriageAt(this.player.x);
     if (car !== currentCar) {
-      const door = this.findDoorBetween(currentCar, car);
-      if (door && door.sealed) return true;
+      if (this.isDoorSealedBetween(currentCar, car)) return true;
     }
     return false;
   }
@@ -640,14 +655,16 @@ export class CleanupScene extends Phaser.Scene {
     return nearest;
   }
 
-  // 封锁一扇门，连带封锁另一侧
+  // 封锁一扇门，连带封锁同一连接处的对侧门
   private sealDoor(door: DoorDef) {
     door.sealed = true;
+    door.sealTimer = 0;
     this.hasSealer = false;
     const seal = this.add.rectangle(door.x, door.y, CAR_GAP - 6, CAR_H - 12, 0xff6644, 0.7);
     seal.setStrokeStyle(2, 0xffaa66, 1); seal.setDepth(4);
     door.sealGraphic = seal;
 
+    // 找同一连接处的对侧门
     let other: DoorDef | undefined;
     if (door.side === 'front' && door.carriageIndex > 1) {
       other = this.doors.find(d => d.carriageIndex === door.carriageIndex - 1 && d.side === 'back');
@@ -656,12 +673,13 @@ export class CleanupScene extends Phaser.Scene {
     }
     if (other && !other.sealed) {
       other.sealed = true;
+      other.sealTimer = 0;
       const seal2 = this.add.rectangle(other.x, other.y, CAR_GAP - 6, CAR_H - 12, 0xff6644, 0.7);
       seal2.setStrokeStyle(2, 0xffaa66, 1); seal2.setDepth(4);
       other.sealGraphic = seal2;
-      this.showMessage(`封锁了 ${door.carriageIndex} 号门，连带封锁对侧！`, 1800);
+      this.showMessage(`封锁了 ${door.carriageIndex} 号门，连带封锁对侧！10秒后自动解除`, 2000);
     } else {
-      this.showMessage(`封锁了 ${door.carriageIndex} 号门！`, 1500);
+      this.showMessage(`封锁了 ${door.carriageIndex} 号门！10秒后自动解除`, 1800);
     }
   }
 
@@ -682,32 +700,77 @@ export class CleanupScene extends Phaser.Scene {
     this.player.setFillStyle(0x44ddff);
   }
 
-  // ── Pollution Spread ─────────────────────────────────────────────────────
+  // ── Pollution Spread & Natural Generation ───────────────────────────────
 
   private updatePollutionSpread(delta: number) {
     const dt = delta / 1000;
-    const speedFactor = this.fuel <= 0 ? 2.5 : (this.fuel < 25 ? 1.6 : 1.0);
+    // 燃料越低，残秽自然生成越快
+    const speedFactor = this.fuel <= 0 ? 2.5 : (this.fuel < 25 ? 1.6 : (this.fuel < 50 ? 1.2 : 1.0));
 
+    // 1. 自然生成：每节车厢按速率增长
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      this.pollutionLevels[i] = Math.min(POLLUTION_MAX, this.pollutionLevels[i] + POLLUTION_NATURAL_RATE * dt * speedFactor);
+    }
+
+    // 2. 高浓度扩散到相邻车厢
     for (let i = 1; i <= CAR_COUNT; i++) {
       if (this.pollutionLevels[i] > POLLUTION_HIGH_THRESHOLD) {
         if (i > 1) {
           this.pollutionLevels[i - 1] = Math.min(POLLUTION_MAX, this.pollutionLevels[i - 1] + POLLUTION_SPREAD_RATE * dt * speedFactor);
-          this.redrawPollution(i - 1);
         }
         if (i < CAR_COUNT) {
           this.pollutionLevels[i + 1] = Math.min(POLLUTION_MAX, this.pollutionLevels[i + 1] + POLLUTION_SPREAD_RATE * dt * speedFactor);
-          this.redrawPollution(i + 1);
         }
       }
     }
+
+    // 3. 重绘所有有残秽的车厢
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      this.redrawPollution(i);
+    }
+
+    // 4. 浓度爆表判定
     for (let i = 1; i <= CAR_COUNT; i++) {
       if (this.pollutionLevels[i] >= POLLUTION_MAX) {
         this.pollutionHighTimer[i] += delta;
-        if (this.pollutionHighTimer[i] > 8000) { this.die(`${i}号车厢残秽浓度爆表，列车被吞没！`); return; }
+        if (this.pollutionHighTimer[i] > POLLUTION_DEATH_TIME) { this.die(`${i}号车厢残秽浓度爆表，列车被吞没！`); return; }
       } else { this.pollutionHighTimer[i] = 0; }
     }
-  }
 
+    // 5. 高浓度自然生成新怪物
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      if (this.pollutionLevels[i] >= POLLUTION_SPAWN_THRESHOLD) {
+        this.pollutionSpawnCooldown[i] -= delta;
+        if (this.pollutionSpawnCooldown[i] <= 0) {
+          // 检查该车厢是否已有活着的怪物
+          const hasMonster = this.monsters.some(m => m.alive && !m.dying && m.carriageIndex === i);
+          if (!hasMonster && this.monsters.filter(m => m.alive && !m.dying).length < 3) {
+            this.spawnMonster(i);
+            this.pollutionSpawnCooldown[i] = 20000; // 20秒冷却
+            this.showMessage(`${i}号车厢残秽浓度过高，新的怪物出现了！`, 2000);
+          } else {
+            this.pollutionSpawnCooldown[i] = 5000; // 已有怪物则5秒后再检
+          }
+        }
+      } else {
+        this.pollutionSpawnCooldown[i] = 0;
+      }
+    }
+  }
+  // ── Seal Timer (封锁器自动解除) ─────────────────────────────────────────
+
+  private updateSealTimers(delta: number) {
+    for (const door of this.doors) {
+      if (door.sealed) {
+        door.sealTimer += delta;
+        if (door.sealTimer >= SEAL_AUTO_REMOVE_TIME) {
+          door.sealed = false;
+          door.sealTimer = 0;
+          if (door.sealGraphic) { door.sealGraphic.destroy(); door.sealGraphic = undefined; }
+        }
+      }
+    }
+  }
   // ── Fuel / Distance ──────────────────────────────────────────────────────
 
   private updateFuelDistance(delta: number) {
@@ -731,7 +794,7 @@ export class CleanupScene extends Phaser.Scene {
   private createUI() {
     this.fuelText = this.add.text(16, 16, '燃料: 100%', { fontSize: '18px', color: '#ffaa44' }).setScrollFactor(0).setDepth(20);
     this.distText = this.add.text(16, 40, '距下一站: 1000m', { fontSize: '18px', color: '#44ddff' }).setScrollFactor(0).setDepth(20);
-    this.carryText = this.add.text(16, 64, '携带残秽: 0/1', { fontSize: '18px', color: '#ff6666' }).setScrollFactor(0).setDepth(20);
+    this.carryText = this.add.text(16, 64, '携带残秽: 0/3', { fontSize: '18px', color: '#ff6666' }).setScrollFactor(0).setDepth(20);
     this.sealerText = this.add.text(16, 88, '封锁器: 未携带 (库存4)', { fontSize: '16px', color: '#ffcc66' }).setScrollFactor(0).setDepth(20);
     this.pollutionText = this.add.text(16, 110, '残秽: ', { fontSize: '14px', color: '#ff4444' }).setScrollFactor(0).setDepth(20);
 
@@ -771,6 +834,7 @@ export class CleanupScene extends Phaser.Scene {
     this.handleActions(delta);
     this.updateMonsters(delta);
     this.updatePollutionSpread(delta);
+    this.updateSealTimers(delta);
     this.updateFuelDistance(delta);
     this.updateUI();
   }
