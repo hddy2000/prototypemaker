@@ -73,7 +73,7 @@ const MAP_PAD = 40;
 
 // 玩家
 const PLAYER_SPEED = 175;
-const PLAYER_CARRY_SPEED = 105;   // 携带残秽时减速
+const PLAYER_CARRY_SPEED = 140;   // 携带残秽时减速（正常速度的80%）
 const PLAYER_CLEAN_SPEED = 55;    // 吸取残秽时几乎站定
 const PLAYER_SIZE = 22;
 
@@ -789,7 +789,8 @@ export class CleanupScene extends Phaser.Scene {
     if (this.pollutionLevels[car] <= 0) return;
 
     // 玩家附近范围内吸取，降低浓度
-    const cleanRate = 0.12 * delta;
+    // cleanRate:carryRate = 6:1，满载3份 = 移除18点 = 18%每趟
+    const cleanRate = 0.36 * delta;
     this.pollutionLevels[car] = Math.max(0, this.pollutionLevels[car] - cleanRate);
     this.redrawPollution(car);
     this.carrying = Math.min(this.carryCapacity, this.carrying + 0.06 * delta);
