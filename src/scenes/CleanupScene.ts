@@ -850,8 +850,34 @@ export class CleanupScene extends Phaser.Scene {
     if (this.isDead) return;
     this.isDead = true;
     this.player.setFillStyle(0x666666);
-    this.cameras.main.shake(300, 0.02);
-    this.showMessage(`💀 ${cause}\n\n按ESC返回菜单`, 999999);
+
+    // ── 跳脸：鬼.png 瞬间占据整个画面 ──
+    const cam = this.cameras.main;
+    const jumpscare = this.add.image(cam.centerX, cam.centerY, 'ghost');
+    jumpscare.setScrollFactor(0);          // 固定在屏幕中央，不随相机移动
+    jumpscare.setDepth(9999);              // 最顶层
+    // 缩放到刚好覆盖整个画面（按宽高取较大比例）
+    const scaleX = cam.width / jumpscare.width;
+    const scaleY = cam.height / jumpscare.height;
+    const coverScale = Math.max(scaleX, scaleY) * 1.1;  // 略大确保铺满
+    jumpscare.setScale(0);                 // 从0开始
+    jumpscare.setAlpha(1);
+
+    // 瞬间放大（120ms 极快 Back.easeOut 制造冲击感）
+    this.tweens.add({
+      targets: jumpscare,
+      scale: coverScale,
+      duration: 120,
+      ease: 'Back.easeOut',
+    });
+    // 同时屏幕剧烈震动 + 闪红
+    cam.shake(500, 0.04);
+    cam.flash(150, 255, 0, 0, true);
+
+    // 1.2秒后显示死亡文字（让跳脸画面停留一会儿）
+    this.time.delayedCall(1200, () => {
+      this.showMessage(`💀 ${cause}\n\n按ESC返回菜单`, 999999);
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
