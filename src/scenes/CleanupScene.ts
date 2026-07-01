@@ -38,6 +38,23 @@ interface Monster {
   dying: boolean;         // 正在消散
 }
 
+/** 规则怪谈小道（一二三木头人） */
+interface SidePath {
+  id: string;
+  fromCar: number;          // 起点车厢编号（0=车头）
+  toCar: number;            // 终点车厢编号
+  // 小道由三段矩形组成：入口竖段 + 水平段 + 出口竖段
+  entryRect: { x: number; y: number; w: number; h: number };
+  horizRect: { x: number; y: number; w: number; h: number };
+  exitRect: { x: number; y: number; w: number; h: number };
+  isYellow: boolean;        // 当前是否为危险（黄色）状态
+  stateTimer: number;       // 当前状态剩余时间（ms）
+  nextDuration: number;     // 下次状态持续时间
+  playerMoveAccum: number;  // 黄色期间玩家移动累计距离
+  graphics: Phaser.GameObjects.Rectangle[];  // 用于变色显示
+  label: Phaser.GameObjects.Text;            // 小道标识
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const CAR_W = 520;            // 单节车厢宽
@@ -76,6 +93,15 @@ const POLLUTION_SPAWN_MIN = 50;          // 开始概率刷怪的最低浓度
 const POLLUTION_SPAWN_CHECK_INTERVAL = 5000; // 概率检定间隔（毫秒）
 const POLLUTION_SPAWN_MAX_MONSTERS = 3;   // 场上最大怪物数
 
+// 规则怪谈小道（一二三木头人）
+const PATH_WIDTH = 40;               // 小道宽度（刚好容纳玩家22px）
+const PATH_Y = 40;                  // 水平段的Y坐标（车厢上方）
+const PATH_SAFE_MIN = 3000;         // 安全状态最短持续时间（ms）
+const PATH_SAFE_MAX = 6000;         // 安全状态最长持续时间（ms）
+const PATH_DANGER_MIN = 1500;       // 危险(黄)状态最短持续时间（ms）
+const PATH_DANGER_MAX = 2500;       // 危险(黄)状态最长持续时间（ms）
+const PATH_MOVE_THRESHOLD = 8;      // 黄色期间单帧移动超过此距离即死（px）
+
 // 燃料 / 距离
 const FUEL_MAX = 100;
 const FUEL_PER_DEPOSIT = 10;      // 每次投喂转化（降低，让资源更紧张）
@@ -110,6 +136,9 @@ export class CleanupScene extends Phaser.Scene {
 
   // 怪物
   private monsters: Monster[] = [];
+
+  // 规则怪谈小道
+  private sidePaths: SidePath[] = [];
 
   // 玩家状态
   private carrying = 0;          // 携带的残秽量
@@ -160,6 +189,8 @@ export class CleanupScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBounds(0, 0, this.getTotalWidth(), CAR_H + CAR_Y + MAP_PAD);
     this.cameras.main.setBackgroundColor('#0a0a0f');
+    // 扩大上边界以容纳小道
+    this.cameras.main.setBounds(0, -20, this.getTotalWidth(), CAR_H + CAR_Y + MAP_PAD + 20);
 
     this.buildCarriages();
     this.drawMap();
@@ -231,6 +262,82 @@ export class CleanupScene extends Phaser.Scene {
       this.pollutionLevels.push(initPollution);
       this.pollutionHighTimer.push(0);
       this.pollutionSpawnCooldown.push(0);
+    }
+
+    // 构建三条规则怪谈小道
+    this.buildSidePaths();
+  }
+
+  /** 构建规则怪谈小道：车头→2号, 3号→5号, 6号→4号 */
+  private buildSidePaths() {
+    const defs: { id: string; fromCar: number; toCar: number }[] = [
+      { id: 'A', fromCar: 0, toCar: 2 },   // 车头 → 2号
+      { id: 'B', fromCar: 3, toCar: 5 },   // 3号 → 5号
+      { id: 'C', fromCar: 6, toCar: 4 },   // 6号 → 4号
+    ];
+
+    for (const def of defs) {
+      // 起点和终点的X中心
+      const fromX = def.fromCar === 0
+        ? LOCO_X + LOCO_W / 2
+        : this.carCenterX(def.fromCar);
+      const toX = def.toCar === 0
+        ? LOCO_X + LOCO_W / 2
+        : this.carCenterX(def.toCar);
+
+      const leftX = Math.min(fromX, toX);
+      const rightX = Math.max(fromX, toX);
+
+      // 入口竖段：从车厢顶部(CAR_Y)向上到水平段(PATH_Y)
+      const entryRect = {
+        x: fromX - PATH_WIDTH / 2,
+        y: PATH_Y,
+        w: PATH_WIDTH,
+        h: CAR_Y - PATH_Y,
+      };
+      // 水平段：连接入口和出口
+      const horizRect = {
+        x: leftX,
+        y: PATH_Y - PATH_WIDTH / 2,
+        w: rightX - leftX,
+        h: PATH_WIDTH,
+      };
+      // 出口竖段：从水平段向下到车厢顶部
+      const exitRect = {
+        x: toX - PATH_WIDTH / 2,
+        y: PATH_Y,
+        w: PATH_WIDTH,
+        h: CAR_Y - PATH_Y,
+      };
+
+      // 绘制小道（初始为安全暗色）
+      const graphics: Phaser.GameObjects.Rectangle[] = [];
+      for (const rect of [entryRect, horizRect, exitRect]) {
+        const r = this.add.rectangle(rect.x + rect.w / 2, rect.y + rect.h / 2, rect.w, rect.h, 0x2a2a1a, 1);
+        r.setStrokeStyle(2, 0x5a5a3a, 0.8);
+        r.setDepth(0);
+        graphics.push(r);
+      }
+
+      // 小道标识文字
+      const midX = (leftX + rightX) / 2;
+      const label = this.add.text(midX, PATH_Y - PATH_WIDTH / 2 - 12, `小道${def.id}`, {
+        fontSize: '11px', color: '#6a6a3a',
+      }).setOrigin(0.5).setDepth(0);
+
+      const initialSafe = Phaser.Math.Between(PATH_SAFE_MIN, PATH_SAFE_MAX);
+      this.sidePaths.push({
+        id: def.id,
+        fromCar: def.fromCar,
+        toCar: def.toCar,
+        entryRect, horizRect, exitRect,
+        isYellow: false,
+        stateTimer: initialSafe,
+        nextDuration: 0,
+        playerMoveAccum: 0,
+        graphics,
+        label,
+      });
     }
   }
 
@@ -480,6 +587,12 @@ export class CleanupScene extends Phaser.Scene {
 
   private isBlockedForMonster(x: number, y: number, halfW: number, halfH: number, currentCar: number): boolean {
     if (y - halfH < CAR_Y + 4 || y + halfH > CAR_Y + CAR_H - 4) return true;
+    // 怪物无法进入小道区域
+    for (const path of this.sidePaths) {
+      for (const rect of [path.entryRect, path.horizRect, path.exitRect]) {
+        if (this.rectOverlap(x - halfW, y - halfH, halfW * 2, halfH * 2, rect.x, rect.y, rect.w, rect.h)) return true;
+      }
+    }
     for (const spot of this.hideSpots) {
       if (this.rectOverlap(x - halfW, y - halfH, halfW * 2, halfH * 2, spot.x, spot.y, spot.w, spot.h)) return true;
     }
@@ -591,6 +704,10 @@ export class CleanupScene extends Phaser.Scene {
     }
     const half = PLAYER_SIZE / 2;
 
+    // 记录移动前的位置（用于小道木头人判定）
+    const prevX = this.player.x;
+    const prevY = this.player.y;
+
     if (vx !== 0) {
       const newX = this.player.x + vx * dt;
       if (!this.isBlockedForPlayer(newX, this.player.y, half)) this.player.x = newX;
@@ -599,10 +716,51 @@ export class CleanupScene extends Phaser.Scene {
       const newY = this.player.y + vy * dt;
       if (!this.isBlockedForPlayer(this.player.x, newY, half)) this.player.y = newY;
     }
-    this.player.y = Phaser.Math.Clamp(this.player.y, CAR_Y + half + 2, CAR_Y + CAR_H - half - 2);
+
+    // 检查是否在小道中
+    const inPath = this.getSidePathAt(this.player.x, this.player.y);
+    if (inPath) {
+      // 在小道中：不限制Y轴到车厢范围，而是限制到小道范围
+      // Y轴不做Clamp，由isBlockedForPlayer的碰撞检测限制
+      // 木头人判定：如果小道是黄色且玩家移动了，累计距离
+      if (inPath.isYellow) {
+        const moveDist = Math.sqrt(
+          (this.player.x - prevX) * (this.player.x - prevX) +
+          (this.player.y - prevY) * (this.player.y - prevY)
+        );
+        if (moveDist > PATH_MOVE_THRESHOLD) {
+          this.die('在小道变黄时违规移动，被规则吞噬！');
+          return;
+        }
+      }
+    } else {
+ // 不在小道中：限制在车厢范围内
+      this.player.y = Phaser.Math.Clamp(this.player.y, CAR_Y + half + 2, CAR_Y + CAR_H - half - 2);
+    }
   }
 
   private isBlockedForPlayer(x: number, y: number, half: number): boolean {
+    // 检查新位置是否在小道中
+    const inPath = this.getSidePathAt(x, y);
+    if (inPath) {
+      // 在小道中：允许通行（小道内部不阻挡）
+      return false;
+    }
+
+    // 不在小道中：检查是否从车厢进入小道入口区域（车厢顶部开口）
+    // 如果当前位置在小道内，新位置不在小道内但在车厢顶部边界附近，允许过渡
+    const currentInPath = this.getSidePathAt(this.player.x, this.player.y);
+    if (currentInPath) {
+      // 从小道出来到车厢：检查新位置是否在车厢范围内
+      if (y >= CAR_Y - half && y <= CAR_Y + CAR_H - half) {
+        // 在车厢Y范围内，允许出来
+        return false;
+      }
+      // 从小道出来到车厢外：阻挡
+      return true;
+    }
+
+    // 正常车厢碰撞检测
     if (y - half < CAR_Y + 2 || y + half > CAR_Y + CAR_H - 2) return true;
     for (const spot of this.hideSpots) {
       if (this.rectOverlap(x - half, y - half, half * 2, half * 2, spot.x, spot.y, spot.w, spot.h)) return true;
@@ -617,6 +775,48 @@ export class CleanupScene extends Phaser.Scene {
 
   private rectOverlap(x1: number, y1: number, w1: number, h1: number, x2: number, y2: number, w2: number, h2: number): boolean {
     return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+  }
+
+  /** 检查坐标是否在任意小道区域内 */
+  private getSidePathAt(x: number, y: number): SidePath | null {
+    for (const path of this.sidePaths) {
+      for (const rect of [path.entryRect, path.horizRect, path.exitRect]) {
+        if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
+          return path;
+        }
+      }
+    }
+    return null;
+  }
+
+  /** 更新小道状态（一二三木头人：随机切换安全/危险） */
+  private updateSidePaths(delta: number) {
+    for (const path of this.sidePaths) {
+      path.stateTimer -= delta;
+      if (path.stateTimer <= 0) {
+        // 切换状态
+        path.isYellow = !path.isYellow;
+        if (path.isYellow) {
+          // 切换到危险(黄色)
+          path.stateTimer = Phaser.Math.Between(PATH_DANGER_MIN, PATH_DANGER_MAX);
+          path.playerMoveAccum = 0;
+          // 变色：黄色警告
+          for (const g of path.graphics) {
+            g.setFillStyle(0x665500, 1);
+            g.setStrokeStyle(3, 0xffaa00, 1);
+          }
+          path.label.setColor('#ffaa00');
+        } else {
+          // 切换到安全(暗色)
+          path.stateTimer = Phaser.Math.Between(PATH_SAFE_MIN, PATH_SAFE_MAX);
+          for (const g of path.graphics) {
+            g.setFillStyle(0x2a2a1a, 1);
+            g.setStrokeStyle(2, 0x5a5a3a, 0.8);
+          }
+          path.label.setColor('#6a6a3a');
+        }
+      }
+    }
   }
 
   // ── Actions: Clean / Deposit / Seal / Hide ───────────────────────────────
@@ -858,8 +1058,8 @@ export class CleanupScene extends Phaser.Scene {
     }).setInteractive({ useHandCursor: true }).setScrollFactor(0).setDepth(20);
     backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
 
-    this.add.text(400, 575, '方向键移动 • 空格吸取残秽 • Shift交互(拾取/封锁/投喂/躲藏) • 被怪物碰到即死', {
-      fontSize: '13px', color: '#666666',
+    this.add.text(400, 575, '方向键移动 • 空格吸取残秽 • Shift交互(拾取/封锁/投喂/躲藏) • 被怪物碰到即死 • 小道变黄时停下！', {
+      fontSize: '12px', color: '#666666',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
   }
 
@@ -892,6 +1092,7 @@ export class CleanupScene extends Phaser.Scene {
     this.updateUI();
     this.updateCryingVolume();
     this.updateVisionOverlay();
+    this.updateSidePaths(delta);
   }
 
   /** 根据最近怪物距离调整哭泣声音量 */
