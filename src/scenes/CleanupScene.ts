@@ -124,7 +124,7 @@ export class CleanupScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private escKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
-  private shiftKey!: Phaser.Input.Keyboard.Key;
+  private interactKey!: Phaser.Input.Keyboard.Key;  // E键交互
 
   // 地图
   private carriages: CarriageDef[] = [];
@@ -567,7 +567,7 @@ export class CleanupScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    this.shiftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+    this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
   }
 
   // ── Monsters ─────────────────────────────────────────────────────────────
@@ -958,7 +958,7 @@ export class CleanupScene extends Phaser.Scene {
     } else {
       this.isCleaning = false;
     }
-    if (Phaser.Input.Keyboard.JustDown(this.shiftKey)) {
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
       this.tryInteract();
     }
   }
@@ -970,7 +970,7 @@ export class CleanupScene extends Phaser.Scene {
       if (d < SEALER_PICKUP_RANGE) {
         this.hasSealer = true;
         this.sealersRemaining--;
-        this.showMessage('拾取了封锁器！走到门前按 Shift 封锁', 1500);
+        this.showMessage('拾取了封锁器！走到门前按 E 封锁', 1500);
         return;
       }
     }
@@ -1050,7 +1050,7 @@ export class CleanupScene extends Phaser.Scene {
     this.isHidden = true; this.hiddenSpot = spot; spot.occupied = true;
     this.player.x = spot.x + spot.w / 2; this.player.y = spot.y + spot.h / 2;
     this.player.setFillStyle(0x226688);
-    this.showMessage('躲藏中！怪物无法发现你。再按 Shift 离开', 2000);
+    this.showMessage('躲藏中！怪物无法发现你。再按 E 离开', 2000);
   }
 
   private exitHide() {
@@ -1188,7 +1188,7 @@ export class CleanupScene extends Phaser.Scene {
     }).setInteractive({ useHandCursor: true }).setScrollFactor(0).setDepth(20);
     backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
 
-    this.add.text(400, 575, '方向键移动 • 空格吸取残秽 • Shift交互(拾取/封锁/投喂/躲藏) • 被怪物碰到即死 • 小道变黄时停下！', {
+    this.add.text(400, 575, '方向键移动 • 空格吸取残秽 • E交互(拾取/封锁/投喂/躲藏) • 被怪物碰到即死 • 小道黄光时停下！', {
       fontSize: '12px', color: '#666666',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
   }

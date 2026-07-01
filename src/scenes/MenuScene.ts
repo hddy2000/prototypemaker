@@ -79,7 +79,11 @@ export class MenuScene extends Phaser.Scene {
       descText.setInteractive({ useHandCursor: true });
 
       const launchScene = () => {
-        this.scene.start(proto.key);
+        if (proto.key === 'CleanupScene') {
+          this.showCleanupIntro();
+        } else {
+          this.scene.start(proto.key);
+        }
       };
 
       nameText.on('pointerdown', launchScene);
@@ -102,7 +106,12 @@ export class MenuScene extends Phaser.Scene {
     const enterKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
     enterKey.on('down', () => {
-      this.scene.start(this.prototypes[this.selectedIndex].key);
+      const proto = this.prototypes[this.selectedIndex];
+      if (proto.key === 'CleanupScene') {
+        this.showCleanupIntro();
+      } else {
+        this.scene.start(proto.key);
+      }
     });
 
     cursors.up!.on('down', () => {
@@ -126,5 +135,64 @@ export class MenuScene extends Phaser.Scene {
         item.setColor('#ffffff');
       }
     });
+  }
+
+  /** 末班地铁说明页：按Enter进入游戏 */
+  private showCleanupIntro() {
+    // 半透明遮罩
+    const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.85);
+    overlay.setDepth(100);
+
+    const panel = this.add.rectangle(400, 300, 720, 520, 0x111122, 0.95);
+    panel.setStrokeStyle(2, 0x444466, 1);
+    panel.setDepth(101);
+
+    const texts: Phaser.GameObjects.Text[] = [];
+    const mkText = (y: number, text: string, style: Phaser.Types.GameObjects.Text.TextStyle) => {
+      const t = this.add.text(400, y, text, style).setOrigin(0.5).setDepth(102);
+      texts.push(t);
+      return t;
+    };
+
+    mkText(70, '🚇 末班地铁', { fontSize: '32px', color: '#ffaa44', fontStyle: 'bold' });
+    mkText(110, '清理残秽，投喂燃料，抵达下一站', { fontSize: '14px', color: '#888888' });
+
+    mkText(150, '🎮 操作', { fontSize: '18px', color: '#44ddff', fontStyle: 'bold' });
+    mkText(178, '方向键 移动  •  空格 吸取残秽(按住)  •  E 交互(拾取/封锁/投喂/躲藏)  •  ESC 菜单', { fontSize: '13px', color: '#cccccc' });
+
+    mkText(215, '⚙️ 核心机制', { fontSize: '18px', color: '#44ddff', fontStyle: 'bold' });
+    mkText(243, '• 残秽浓度自然增长并扩散，≥50%概率滋生怪物，爆表12秒即灭', { fontSize: '13px', color: '#cccccc' });
+    mkText(263, '• 吸取残秽→走到车头投喂→转化为燃料，行驶满1000m通关', { fontSize: '13px', color: '#cccccc' });
+    mkText(283, '• 燃料耗尽熄火30秒即灭，封锁器共4个，封门撞怪即杀(10秒解封)', { fontSize: '13px', color: '#cccccc' });
+    mkText(303, '• 车厢内有厕所/柜子可按E躲藏避开怪物', { fontSize: '13px', color: '#cccccc' });
+
+    mkText(340, '⚠️ 规则怪谈小道（车厢上方绕行通道）', { fontSize: '16px', color: '#ffaa00', fontStyle: 'bold' });
+    mkText(365, '🟤 棕色(安全)：可自由通行    🟡 黄光(预警1秒)：立刻停下！', { fontSize: '13px', color: '#cccccc' });
+    mkText(385, '🔴 红光(危险)：任何移动 = 瞬间死亡！等回棕色再走', { fontSize: '13px', color: '#ff6666' });
+
+    mkText(425, '💀 死亡条件', { fontSize: '16px', color: '#ff4444', fontStyle: 'bold' });
+    mkText(450, '被怪物触碰 / 残秽爆表12秒 / 熄火30秒 / 小道红光时移动', { fontSize: '13px', color: '#cccccc' });
+
+    const prompt = mkText(510, '按 Enter 进入游戏', { fontSize: '18px', color: '#ffffff', backgroundColor: '#333355', padding: { x: 20, y: 8 } });
+
+    // 闪烁提示
+    this.tweens.add({
+      targets: prompt,
+      alpha: { from: 1, to: 0.4 },
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+    });
+
+    // 按Enter进入游戏
+    const enterListener = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    const handler = () => {
+      overlay.destroy();
+      panel.destroy();
+      texts.forEach(t => t.destroy());
+      enterListener.removeListener('down', handler);
+      this.scene.start('CleanupScene');
+    };
+    enterListener.on('down', handler);
   }
 }
