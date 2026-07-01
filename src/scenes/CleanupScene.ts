@@ -130,6 +130,10 @@ export class CleanupScene extends Phaser.Scene {
   private isDead = false;
   private isWon = false;
 
+  // 音频
+  private cryingSound!: Phaser.Sound.BaseSound;   // 怪物哭泣声（持续循环，根据距离调音量）
+  private screamSound!: Phaser.Sound.BaseSound;   // 死亡跳脸尖叫
+
   // UI
   private fuelText!: Phaser.GameObjects.Text;
   private distText!: Phaser.GameObjects.Text;
@@ -159,6 +163,11 @@ export class CleanupScene extends Phaser.Scene {
 
     // 初始一只怪物在尾车
     this.spawnMonster(CAR_COUNT);
+
+    // ── 音频初始化 ──
+    this.cryingSound = this.sound.add('crying', { loop: true, volume: 0 });
+    this.cryingSound.play();
+    this.screamSound = this.sound.add('scream', { volume: 1 });
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
   }
@@ -829,7 +838,10 @@ export class CleanupScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     if (this.isDead || this.isWon) return;
-    if (Phaser.Input.Keyboard.JustDown(this.escKey)) { this.scene.start('MenuScene'); return; }
+    if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
+      if (this.cryingSound) this.cryingSound.stop();
+      this.scene.start('MenuScene'); return;
+    }
     this.handlePlayerMovement(delta);
     this.handleActions(delta);
     this.updateMonsters(delta);
@@ -837,12 +849,29 @@ export class CleanupScene extends Phaser.Scene {
     this.updateSealTimers(delta);
     this.updateFuelDistance(delta);
     this.updateUI();
+    this.updateCryingVolume();
+  }
+
+  /** 根据最近怪物距离调整哭泣声音量 */
+  private updateCryingVolume() {
+    if (!this.cryingSound || !this.cryingSound.isPlaying) return;
+    let minDist = Infinity;
+    for (const m of this.monsters) {
+      if (!m.alive) continue;
+      const d = Phaser.Math.Distance.Between(m.container.x, m.container.y, this.player.x, this.player.y);
+      if (d < minDist) minDist = d;
+    }
+    // 距离 0 → 音量 0.8（最大）；距离 800+ → 音量 0（静音）
+    const maxRange = 800;
+    const vol = minDist < maxRange ? (1 - minDist / maxRange) * 0.8 : 0;
+    (this.cryingSound as any).setVolume(vol);
   }
 
   // ── Win / Lose ───────────────────────────────────────────────────────────
 
   private win() {
     this.isWon = true;
+    if (this.cryingSound) this.cryingSound.stop();
     this.showMessage('🎉 到站！列车安全抵达下一站！\n\n按ESC返回菜单', 999999);
   }
 
@@ -850,6 +879,10 @@ export class CleanupScene extends Phaser.Scene {
     if (this.isDead) return;
     this.isDead = true;
     this.player.setFillStyle(0x666666);
+
+    // ── 音频：停止哭泣，播放尖叫 ──
+    if (this.cryingSound) this.cryingSound.stop();
+    if (this.screamSound) this.screamSound.play();
 
     // ── 跳脸：鬼.png 瞬间占据整个画面 ──
     const cam = this.cameras.main;
