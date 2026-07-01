@@ -67,13 +67,18 @@ const POLLUTION_MAX = 100;        // 每节车厢残秽浓度上限
 const POLLUTION_SPREAD_RATE = 0.4;// 每秒向相邻车厢扩散
 const POLLUTION_HIGH_THRESHOLD = 60;
 const POLLUTION_NATURAL_RATE = 0.4;  // 自然生成基础速率（每秒每车厢）
-const POLLUTION_SPAWN_THRESHOLD = 85; // 超过此阈值自然生成新怪物
+const POLLUTION_SPAWN_THRESHOLD = 85; // 超过此阈值必定生成新怪物
 const SEAL_AUTO_REMOVE_TIME = 10000;  // 封锁器10秒后自动解除（毫秒）
 const POLLUTION_DEATH_TIME = 12000;  // 浓度爆表后宽限时间（毫秒）
 
+// 概率刷怪：残秽浓度 ≥30% 开始有概率刷新怪物
+const POLLUTION_SPAWN_MIN = 30;          // 开始概率刷怪的最低浓度
+const POLLUTION_SPAWN_CHECK_INTERVAL = 5000; // 概率检定间隔（毫秒）
+const POLLUTION_SPAWN_MAX_MONSTERS = 3;   // 场上最大怪物数
+
 // 燃料 / 距离
 const FUEL_MAX = 100;
-const FUEL_PER_DEPOSIT = 14;      // 每次投喂转化
+const FUEL_PER_DEPOSIT = 10;      // 每次投喂转化（降低，让资源更紧张）
 const DISTANCE_TOTAL = 1000;      // 总距离
 const FUEL_DRAIN_RATE = 1.8;      // 每秒燃料消耗
 const STALL_DEATH_TIME = 30000;   // 熄火30秒 → 失败
@@ -221,7 +226,9 @@ export class CleanupScene extends Phaser.Scene {
     }
 
     for (let i = 0; i <= CAR_COUNT; i++) {
-      this.pollutionLevels.push(0);
+      // 初始残秽：尾车高，往前递减，让开局就有压力
+      const initPollution = i === 0 ? 0 : Math.max(0, 45 - i * 5);
+      this.pollutionLevels.push(initPollution);
       this.pollutionHighTimer.push(0);
       this.pollutionSpawnCooldown.push(0);
     }
@@ -248,6 +255,17 @@ export class CleanupScene extends Phaser.Scene {
       this.mapGraphics.fillStyle(0x2a2a30, 1);
       this.mapGraphics.fillRect(lx + 10, CAR_Y + 110, CAR_W - 20, 30);
       this.mapGraphics.fillRect(lx + 10, CAR_Y + CAR_H - 80, CAR_W - 20, 30);
+    }
+
+    // 车厢编号：每节车厢地板中央写大号阿拉伯数字 1~6
+    for (let i = 1; i <= CAR_COUNT; i++) {
+      const cx = this.carCenterX(i);
+      const cy = CAR_Y + CAR_H / 2;
+      this.add.text(cx, cy, String(i), {
+        fontSize: '72px',
+        color: '#3a3a44',
+        fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(0);
     }
 
     // 躇所隔间 & 柜子
@@ -428,8 +446,8 @@ export class CleanupScene extends Phaser.Scene {
   /** 怪物消散：留下残秽（不解封门，门由计时器自动解除） */
   private killMonster(m: Monster) {
     m.dying = true;
-    // 留下残秽
-    this.addPollution(m.carriageIndex, 15);
+    // 留下残秽（封锁杀怪代价增加：15→25）
+    this.addPollution(m.carriageIndex, 25);
 
     // 消散动画
     this.tweens.add({
@@ -752,23 +770,40 @@ export class CleanupScene extends Phaser.Scene {
       } else { this.pollutionHighTimer[i] = 0; }
     }
 
-    // 5. 高浓度自然生成新怪物
+    // 5. 概率刷怪：残秽浓度 ≥30% 开始有概率刷新，浓度越高概率越大
     for (let i = 1; i <= CAR_COUNT; i++) {
-      if (this.pollutionLevels[i] >= POLLUTION_SPAWN_THRESHOLD) {
-        this.pollutionSpawnCooldown[i] -= delta;
-        if (this.pollutionSpawnCooldown[i] <= 0) {
-          // 检查该车厢是否已有活着的怪物
-          const hasMonster = this.monsters.some(m => m.alive && !m.dying && m.carriageIndex === i);
-          if (!hasMonster && this.monsters.filter(m => m.alive && !m.dying).length < 3) {
-            this.spawnMonster(i);
-            this.pollutionSpawnCooldown[i] = 20000; // 20秒冷却
-            this.showMessage(`${i}号车厢残秽浓度过高，新的怪物出现了！`, 2000);
-          } else {
-            this.pollutionSpawnCooldown[i] = 5000; // 已有怪物则5秒后再检
-          }
+      const level = this.pollutionLevels[i];
+      if (level < POLLUTION_SPAWN_MIN) {
+        this.pollutionSpawnCooldown[i] = 0;
+        continue;
+      }
+
+      this.pollutionSpawnCooldown[i] -= delta;
+      if (this.pollutionSpawnCooldown[i] > 0) continue;
+
+      // 计算刷怪概率：30%→5%, 50%→20%, 70%→50%, 85%+→100%
+      let spawnChance: number;
+      if (level >= POLLUTION_SPAWN_THRESHOLD) {
+        spawnChance = 1.0;  // 85%+ 必定刷
+      } else {
+        // 线性插值：30%→0.05, 85%→1.0
+        const t = (level - POLLUTION_SPAWN_MIN) / (POLLUTION_SPAWN_THRESHOLD - POLLUTION_SPAWN_MIN);
+        spawnChance = 0.05 + t * 0.95;
+      }
+
+      if (Math.random() < spawnChance) {
+        const hasMonster = this.monsters.some(m => m.alive && !m.dying && m.carriageIndex === i);
+        const aliveCount = this.monsters.filter(m => m.alive && !m.dying).length;
+        if (!hasMonster && aliveCount < POLLUTION_SPAWN_MAX_MONSTERS) {
+          this.spawnMonster(i);
+          this.pollutionSpawnCooldown[i] = POLLUTION_SPAWN_CHECK_INTERVAL;
+          this.showMessage(`${i}号车厢残秽滋生了新的怪物！`, 2000);
+        } else {
+          this.pollutionSpawnCooldown[i] = POLLUTION_SPAWN_CHECK_INTERVAL;
         }
       } else {
-        this.pollutionSpawnCooldown[i] = 0;
+        // 未触发，等待下次检定
+        this.pollutionSpawnCooldown[i] = POLLUTION_SPAWN_CHECK_INTERVAL;
       }
     }
   }
