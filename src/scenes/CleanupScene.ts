@@ -71,8 +71,8 @@ const POLLUTION_SPAWN_THRESHOLD = 85; // 超过此阈值必定生成新怪物
 const SEAL_AUTO_REMOVE_TIME = 10000;  // 封锁器10秒后自动解除（毫秒）
 const POLLUTION_DEATH_TIME = 12000;  // 浓度爆表后宽限时间（毫秒）
 
-// 概率刷怪：残秽浓度 ≥30% 开始有概率刷新怪物
-const POLLUTION_SPAWN_MIN = 30;          // 开始概率刷怪的最低浓度
+// 概率刷怪：残秽浓度 ≥50% 开始有概率刷新怪物
+const POLLUTION_SPAWN_MIN = 50;          // 开始概率刷怪的最低浓度
 const POLLUTION_SPAWN_CHECK_INTERVAL = 5000; // 概率检定间隔（毫秒）
 const POLLUTION_SPAWN_MAX_MONSTERS = 3;   // 场上最大怪物数
 
@@ -226,8 +226,8 @@ export class CleanupScene extends Phaser.Scene {
     }
 
     for (let i = 0; i <= CAR_COUNT; i++) {
-      // 初始残秽：尾车高，往前递减，让开局就有压力
-      const initPollution = i === 0 ? 0 : Math.max(0, 45 - i * 5);
+      // 初始残秽：尾车略高往前递减，但都低于50%刷怪阈值给玩家喘息空间
+      const initPollution = i === 0 ? 0 : Math.max(0, 30 - i * 4);
       this.pollutionLevels.push(initPollution);
       this.pollutionHighTimer.push(0);
       this.pollutionSpawnCooldown.push(0);
@@ -770,7 +770,7 @@ export class CleanupScene extends Phaser.Scene {
       } else { this.pollutionHighTimer[i] = 0; }
     }
 
-    // 5. 概率刷怪：残秽浓度 ≥30% 开始有概率刷新，浓度越高概率越大
+    // 5. 概率刷怪：残秽浓度 ≥50% 开始有概率刷新，浓度越高概率越大
     for (let i = 1; i <= CAR_COUNT; i++) {
       const level = this.pollutionLevels[i];
       if (level < POLLUTION_SPAWN_MIN) {
@@ -781,12 +781,12 @@ export class CleanupScene extends Phaser.Scene {
       this.pollutionSpawnCooldown[i] -= delta;
       if (this.pollutionSpawnCooldown[i] > 0) continue;
 
-      // 计算刷怪概率：30%→5%, 50%→20%, 70%→50%, 85%+→100%
+      // 计算刷怪概率：50%→5%, 65%→20%, 75%→50%, 85%+→100%
       let spawnChance: number;
       if (level >= POLLUTION_SPAWN_THRESHOLD) {
         spawnChance = 1.0;  // 85%+ 必定刷
       } else {
-        // 线性插值：30%→0.05, 85%→1.0
+        // 线性插值：50%→0.05, 85%→1.0
         const t = (level - POLLUTION_SPAWN_MIN) / (POLLUTION_SPAWN_THRESHOLD - POLLUTION_SPAWN_MIN);
         spawnChance = 0.05 + t * 0.95;
       }
