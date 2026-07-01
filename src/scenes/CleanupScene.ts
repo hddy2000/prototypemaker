@@ -51,8 +51,8 @@ interface SidePath {
   stateTimer: number;       // 当前状态剩余时间（ms）
   nextDuration: number;     // 下次状态持续时间
   playerMoveAccum: number;  // 黄色期间玩家移动累计距离
-  graphics: Phaser.GameObjects.Rectangle[];  // 用于变色显示
-  label: Phaser.GameObjects.Text;            // 小道标识
+  fillGraphics: Phaser.GameObjects.Graphics;  // 填充+边框
+  label: Phaser.GameObjects.Text;              // 小道标识
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -288,45 +288,40 @@ export class CleanupScene extends Phaser.Scene {
       const leftX = Math.min(fromX, toX);
       const rightX = Math.max(fromX, toX);
 
-      // 入口竖段：从车厢顶部(CAR_Y)向上到水平段(PATH_Y)
+      // 入口竖段：从车厢内部延伸到水平段（延伸到车厢内 PLAYER_SIZE 深度，确保玩家能进入）
       const entryRect = {
         x: fromX - PATH_WIDTH / 2,
         y: PATH_Y,
         w: PATH_WIDTH,
-        h: CAR_Y - PATH_Y,
+        h: CAR_Y + PLAYER_SIZE - PATH_Y,
       };
-      // 水平段：连接入口和出口
+      // 水平段：覆盖入口和出口的宽度
       const horizRect = {
-        x: leftX,
+        x: leftX - PATH_WIDTH / 2,
         y: PATH_Y - PATH_WIDTH / 2,
-        w: rightX - leftX,
+        w: rightX - leftX + PATH_WIDTH,
         h: PATH_WIDTH,
       };
-      // 出口竖段：从水平段向下到车厢顶部
+      // 出口竖段：同入口
       const exitRect = {
         x: toX - PATH_WIDTH / 2,
         y: PATH_Y,
         w: PATH_WIDTH,
-        h: CAR_Y - PATH_Y,
+        h: CAR_Y + PLAYER_SIZE - PATH_Y,
       };
 
-      // 绘制小道（初始为安全暗色）
-      const graphics: Phaser.GameObjects.Rectangle[] = [];
-      for (const rect of [entryRect, horizRect, exitRect]) {
-        const r = this.add.rectangle(rect.x + rect.w / 2, rect.y + rect.h / 2, rect.w, rect.h, 0x2a2a1a, 1);
-        r.setStrokeStyle(2, 0x5a5a3a, 0.8);
-        r.setDepth(0);
-        graphics.push(r);
-      }
+      // 用单个 Graphics 绘制连续的小道形状（填充+轮廓）
+      const fillGraphics = this.add.graphics();
+      fillGraphics.setDepth(0.5);
 
       // 小道标识文字
       const midX = (leftX + rightX) / 2;
       const label = this.add.text(midX, PATH_Y - PATH_WIDTH / 2 - 12, `小道${def.id}`, {
         fontSize: '11px', color: '#6a6a3a',
-      }).setOrigin(0.5).setDepth(0);
+      }).setOrigin(0.5).setDepth(1);
 
       const initialSafe = Phaser.Math.Between(PATH_SAFE_MIN, PATH_SAFE_MAX);
-      this.sidePaths.push({
+      const path: SidePath = {
         id: def.id,
         fromCar: def.fromCar,
         toCar: def.toCar,
@@ -335,10 +330,119 @@ export class CleanupScene extends Phaser.Scene {
         stateTimer: initialSafe,
         nextDuration: 0,
         playerMoveAccum: 0,
-        graphics,
+        fillGraphics,
         label,
-      });
+      };
+      this.drawSidePath(path);
+      this.sidePaths.push(path);
     }
+  }
+
+  /** 绘制单条小道（填充+Π形轮廓+门口高亮，安全/危险两套配色） */
+  private drawSidePath(path: SidePath) {
+    // 安全用暖棕色（与车厢深蓝灰色明显区分），危险用琥珀色
+    const fillColor = path.isYellow ? 0x665500 : 0x382e1c;
+    const strokeColor = path.isYellow ? 0xffaa00 : 0x8a7a3a;
+    const strokeWidth = path.isYellow ? 3 : 2;
+    const strokeAlpha = path.isYellow ? 1 : 0.9;
+    const doorColor = path.isYellow ? 0xffcc44 : 0xaa9a5a;
+
+    const g = path.fillGraphics;
+    const e = path.entryRect, h = path.horizRect, x = path.exitRect;
+
+    g.clear();
+
+    // 填充三个矩形（重叠部分自然融合）
+    g.fillStyle(fillColor, 1);
+    g.fillRect(e.x, e.y, e.w, e.h);
+    g.fillRect(h.x, h.y, h.w, h.h);
+    g.fillRect(x.x, x.y, x.w, x.h);
+
+    // Π形轮廓：正确描绘外边界+内边界
+    g.lineStyle(strokeWidth, strokeColor, strokeAlpha);
+    const leftRect = e.x <= x.x ? e : x;       // 较左的竖段
+    const rightRect = e.x <= x.x ? x : e;      // 较右的竖段
+    const topY = h.y;
+    const innerTopY = h.y + h.h;
+    const bottomY = e.y + e.h;
+    const leftOuter = leftRect.x;
+    const leftInner = leftRect.x + leftRect.w;
+    const rightInner = rightRect.x;
+    const rightOuter = rightRect.x + rightRect.w;
+
+    g.beginPath();
+    // 外边界（顺时针）：左下→左上→右上→右下
+    g.moveTo(leftOuter, bottomY);
+    g.lineTo(leftOuter, topY);
+    g.lineTo(rightOuter, topY);
+    g.lineTo(rightOuter, bottomY);
+    // 内边界（顺时针）：右下→右上→左上→左下
+    g.moveTo(rightInner, bottomY);
+    g.lineTo(rightInner, innerTopY);
+    g.lineTo(leftInner, innerTopY);
+    g.lineTo(leftInner, bottomY);
+    g.strokePath();
+
+    // 门口高亮：在车厢顶部(CAR_Y)处绘制亮色矩形，标示入口/出口
+    g.fillStyle(doorColor, 0.35);
+    g.fillRect(e.x, CAR_Y - 2, e.w, 4);
+    g.fillRect(x.x, CAR_Y - 2, x.w, 4);
+
+    // 方向箭头：在门口绘制小三角形↑↓
+    g.fillStyle(strokeColor, strokeAlpha);
+    for (const rect of [e, x]) {
+      const cx = rect.x + rect.w / 2;
+      const ay = CAR_Y + 8;
+      // 向上箭头（指向小道）
+      g.beginPath();
+      g.moveTo(cx, ay - 5);
+      g.lineTo(cx - 5, ay + 3);
+      g.lineTo(cx + 5, ay + 3);
+      g.closePath();
+      g.fillPath();
+    }
+
+    path.label.setColor(path.isYellow ? '#ffaa00' : '#8a7a3a');
+  }
+
+  /** 获取指定X范围内小道入口/出口造成的顶部间隙 */
+  private getTopGapsForRange(x: number, w: number): { start: number; end: number }[] {
+    const gaps: { start: number; end: number }[] = [];
+    for (const path of this.sidePaths) {
+      for (const rect of [path.entryRect, path.exitRect]) {
+        if (rect.x < x + w && rect.x + rect.w > x) {
+          gaps.push({ start: Math.max(x, rect.x), end: Math.min(x + w, rect.x + rect.w) });
+        }
+      }
+    }
+    return gaps;
+  }
+
+  /** 绘制带顶部间隙的矩形边框（左、底、右边框正常，顶边框在gap处断开） */
+  private strokeRectWithTopGaps(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, gaps: { start: number; end: number }[]) {
+    g.beginPath();
+    // 左边框
+    g.moveTo(x, y);
+    g.lineTo(x, y + h);
+    // 底边框
+    g.lineTo(x + w, y + h);
+    // 右边框
+    g.lineTo(x + w, y);
+    // 顶边框（带间隙）
+    const sorted = [...gaps].sort((a, b) => a.start - b.start);
+    let cur = x;
+    for (const gap of sorted) {
+      if (gap.start > cur) {
+        g.moveTo(cur, y);
+        g.lineTo(gap.start, y);
+      }
+      cur = Math.max(cur, gap.end);
+    }
+    if (cur < x + w) {
+      g.moveTo(cur, y);
+      g.lineTo(x + w, y);
+    }
+    g.strokePath();
   }
 
   private drawMap() {
@@ -349,7 +453,7 @@ export class CleanupScene extends Phaser.Scene {
     this.mapGraphics.fillStyle(0x1a1a2e, 1);
     this.mapGraphics.fillRect(LOCO_X, CAR_Y, LOCO_W, CAR_H);
     this.mapGraphics.lineStyle(3, 0x4a4a6a, 1);
-    this.mapGraphics.strokeRect(LOCO_X, CAR_Y, LOCO_W, CAR_H);
+    this.strokeRectWithTopGaps(this.mapGraphics, LOCO_X, CAR_Y, LOCO_W, CAR_H, this.getTopGapsForRange(LOCO_X, LOCO_W));
 
     // 6节车厢
     for (let i = 1; i <= CAR_COUNT; i++) {
@@ -357,7 +461,7 @@ export class CleanupScene extends Phaser.Scene {
       this.mapGraphics.fillStyle(0x1c1c22, 1);
       this.mapGraphics.fillRect(lx, CAR_Y, CAR_W, CAR_H);
       this.mapGraphics.lineStyle(3, 0x3a3a44, 1);
-      this.mapGraphics.strokeRect(lx, CAR_Y, CAR_W, CAR_H);
+      this.strokeRectWithTopGaps(this.mapGraphics, lx, CAR_Y, CAR_W, CAR_H, this.getTopGapsForRange(lx, CAR_W));
       // 座椅区装饰
       this.mapGraphics.fillStyle(0x2a2a30, 1);
       this.mapGraphics.fillRect(lx + 10, CAR_Y + 110, CAR_W - 20, 30);
@@ -734,8 +838,19 @@ export class CleanupScene extends Phaser.Scene {
         }
       }
     } else {
- // 不在小道中：限制在车厢范围内
-      this.player.y = Phaser.Math.Clamp(this.player.y, CAR_Y + half + 2, CAR_Y + CAR_H - half - 2);
+      // 不在小道中：限制在车厢范围内
+      // 但如果玩家X对齐某条小道入口/出口，允许向上穿过车厢顶板（不限制Y下限）
+      const alignedWithPath = this.sidePaths.some(path =>
+        [path.entryRect, path.exitRect].some(rect =>
+          this.player.x >= rect.x - 2 && this.player.x <= rect.x + rect.w + 2
+        )
+      );
+      if (alignedWithPath) {
+        // 只限制Y上限（车厢底部），不限制Y下限（允许向上进入小道）
+        this.player.y = Math.min(this.player.y, CAR_Y + CAR_H - half - 2);
+      } else {
+        this.player.y = Phaser.Math.Clamp(this.player.y, CAR_Y + half + 2, CAR_Y + CAR_H - half - 2);
+      }
     }
   }
 
@@ -760,8 +875,20 @@ export class CleanupScene extends Phaser.Scene {
       return true;
     }
 
-    // 正常车厢碰撞检测
-    if (y - half < CAR_Y + 2 || y + half > CAR_Y + CAR_H - 2) return true;
+    // 检查是否在车厢顶部边界附近且X对齐某条小道入口/出口
+    // 这种情况允许向上穿过车厢顶板进入小道
+    if (y - half < CAR_Y + 2) {
+      for (const path of this.sidePaths) {
+        for (const rect of [path.entryRect, path.exitRect]) {
+          if (x >= rect.x - 2 && x <= rect.x + rect.w + 2) {
+            return false;  // X对齐小道入口/出口，允许穿过车厢顶板
+          }
+        }
+      }
+      return true;  // 顶部边界且不对齐任何小道，阻挡
+    }
+
+    if (y + half > CAR_Y + CAR_H - 2) return true;
     for (const spot of this.hideSpots) {
       if (this.rectOverlap(x - half, y - half, half * 2, half * 2, spot.x, spot.y, spot.w, spot.h)) return true;
     }
@@ -794,27 +921,14 @@ export class CleanupScene extends Phaser.Scene {
     for (const path of this.sidePaths) {
       path.stateTimer -= delta;
       if (path.stateTimer <= 0) {
-        // 切换状态
         path.isYellow = !path.isYellow;
         if (path.isYellow) {
-          // 切换到危险(黄色)
           path.stateTimer = Phaser.Math.Between(PATH_DANGER_MIN, PATH_DANGER_MAX);
           path.playerMoveAccum = 0;
-          // 变色：黄色警告
-          for (const g of path.graphics) {
-            g.setFillStyle(0x665500, 1);
-            g.setStrokeStyle(3, 0xffaa00, 1);
-          }
-          path.label.setColor('#ffaa00');
         } else {
-          // 切换到安全(暗色)
           path.stateTimer = Phaser.Math.Between(PATH_SAFE_MIN, PATH_SAFE_MAX);
-          for (const g of path.graphics) {
-            g.setFillStyle(0x2a2a1a, 1);
-            g.setStrokeStyle(2, 0x5a5a3a, 0.8);
-          }
-          path.label.setColor('#6a6a3a');
         }
+        this.drawSidePath(path);
       }
     }
   }
