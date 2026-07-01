@@ -12,6 +12,8 @@ export class BootScene extends Phaser.Scene {
     // 加载音频资源
     this.load.audio('crying', 'assets/crying.mp3');   // 怪物靠近时的哭泣声
     this.load.audio('scream', 'assets/scream.mp3');    // 死亡跳脸音效
+    this.load.image('pathghost', 'assets/pathghost.png');  // 小道瞬杀跳脸鬼图
+    this.load.audio('pathlaugh', 'assets/pathlaugh.mp3');  // 小道瞬杀鬼笑声
   }
 
   create() {

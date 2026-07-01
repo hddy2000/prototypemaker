@@ -100,7 +100,7 @@ const PATH_SAFE_MIN = 3000;         // 安全状态最短持续时间（ms）
 const PATH_SAFE_MAX = 6000;         // 安全状态最长持续时间（ms）
 const PATH_DANGER_MIN = 1500;       // 危险(黄)状态最短持续时间（ms）
 const PATH_DANGER_MAX = 2500;       // 危险(黄)状态最长持续时间（ms）
-const PATH_MOVE_THRESHOLD = 8;      // 黄色期间单帧移动超过此距离即死（px）
+const PATH_MOVE_THRESHOLD = 0.5;     // 黄色期间单帧移动超过此距离即死（px）——任何明显移动都触发
 
 // 燃料 / 距离
 const FUEL_MAX = 100;
@@ -167,6 +167,7 @@ export class CleanupScene extends Phaser.Scene {
   // 音频
   private cryingSound!: Phaser.Sound.BaseSound;   // 怪物哭泣声（持续循环，根据距离调音量）
   private screamSound!: Phaser.Sound.BaseSound;   // 死亡跳脸尖叫
+  private pathLaughSound!: Phaser.Sound.BaseSound; // 小道瞬杀鬼笑声
 
   // 视野遮蔽
   private visionOverlay!: Phaser.GameObjects.Image;
@@ -207,6 +208,7 @@ export class CleanupScene extends Phaser.Scene {
     this.cryingSound = this.sound.add('crying', { loop: true, volume: 0 });
     this.cryingSound.play();
     this.screamSound = this.sound.add('scream', { volume: 1 });
+    this.pathLaughSound = this.sound.add('pathlaugh', { volume: 1 });
 
     // ── 视野遮蔽：模拟车厢内昏暗环境 ──
     this.createVisionOverlay();
@@ -833,7 +835,7 @@ export class CleanupScene extends Phaser.Scene {
           (this.player.y - prevY) * (this.player.y - prevY)
         );
         if (moveDist > PATH_MOVE_THRESHOLD) {
-          this.die('在小道变黄时违规移动，被规则吞噬！');
+          this.dieFromPath('在小道变黄时违规移动，被规则吞噬！');
           return;
         }
       }
@@ -1316,6 +1318,45 @@ export class CleanupScene extends Phaser.Scene {
 
     // 1.2秒后显示死亡文字（让跳脸画面停留一会儿）
     this.time.delayedCall(1200, () => {
+      this.showMessage(`💀 ${cause}\n\n按ESC返回菜单`, 999999);
+    });
+  }
+
+  /** 小道瞬杀专用死亡：使用小道鬼.png + 小道鬼笑.mp3 */
+  private dieFromPath(cause: string) {
+    if (this.isDead) return;
+    this.isDead = true;
+    this.player.setFillStyle(0x666666);
+
+    // ── 音频：停止哭泣，播放小道鬼笑 ──
+    if (this.cryingSound) this.cryingSound.stop();
+    if (this.pathLaughSound) this.pathLaughSound.play();
+
+    // ── 跳脸：小道鬼.png 瞬间占据整个画面 ──
+    const cam = this.cameras.main;
+    const jumpscare = this.add.image(cam.centerX, cam.centerY, 'pathghost');
+    jumpscare.setScrollFactor(0);          // 固定在屏幕中央，不随相机移动
+    jumpscare.setDepth(9999);              // 最顶层
+    // 缩放到刚好覆盖整个画面（按宽高取较大比例）
+    const scaleX = cam.width / jumpscare.width;
+    const scaleY = cam.height / jumpscare.height;
+    const coverScale = Math.max(scaleX, scaleY) * 1.1;  // 略大确保铺满
+    jumpscare.setScale(0);                 // 从0开始
+    jumpscare.setAlpha(1);
+
+    // 瞬间放大（100ms 极快 Back.easeOut 制造冲击感）
+    this.tweens.add({
+      targets: jumpscare,
+      scale: coverScale,
+      duration: 100,
+      ease: 'Back.easeOut',
+    });
+    // 同时屏幕剧烈震动 + 闪黄
+    cam.shake(600, 0.05);
+    cam.flash(200, 255, 200, 0, true);
+
+    // 1.5秒后显示死亡文字（让跳脸画面+笑声停留更久）
+    this.time.delayedCall(1500, () => {
       this.showMessage(`💀 ${cause}\n\n按ESC返回菜单`, 999999);
     });
   }
