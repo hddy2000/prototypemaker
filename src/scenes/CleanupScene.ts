@@ -134,6 +134,9 @@ export class CleanupScene extends Phaser.Scene {
   private cryingSound!: Phaser.Sound.BaseSound;   // 怪物哭泣声（持续循环，根据距离调音量）
   private screamSound!: Phaser.Sound.BaseSound;   // 死亡跳脸尖叫
 
+  // 视野遮蔽
+  private visionOverlay!: Phaser.GameObjects.Image;
+
   // UI
   private fuelText!: Phaser.GameObjects.Text;
   private distText!: Phaser.GameObjects.Text;
@@ -168,6 +171,9 @@ export class CleanupScene extends Phaser.Scene {
     this.cryingSound = this.sound.add('crying', { loop: true, volume: 0 });
     this.cryingSound.play();
     this.screamSound = this.sound.add('scream', { volume: 1 });
+
+    // ── 视野遮蔽：模拟车厢内昏暗环境 ──
+    this.createVisionOverlay();
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
   }
@@ -850,6 +856,7 @@ export class CleanupScene extends Phaser.Scene {
     this.updateFuelDistance(delta);
     this.updateUI();
     this.updateCryingVolume();
+    this.updateVisionOverlay();
   }
 
   /** 根据最近怪物距离调整哭泣声音量 */
@@ -865,6 +872,56 @@ export class CleanupScene extends Phaser.Scene {
     const maxRange = 800;
     const vol = minDist < maxRange ? (1 - minDist / maxRange) * 0.8 : 0;
     (this.cryingSound as any).setVolume(vol);
+  }
+
+  /** 创建视野遮蔽（径向渐变：中心透明，边缘暗化） */
+  private createVisionOverlay() {
+    const overlaySize = 1000;
+    // 仅创建一次（场景重启时纹理缓存中可能已存在）
+    if (!this.textures.exists('visionOverlay')) {
+      const vc = this.textures.createCanvas('visionOverlay', overlaySize, overlaySize);
+      if (vc) {
+        const ctx = vc.getContext();
+        const c = overlaySize / 2;
+        // 填充暗色
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.90)';
+        ctx.fillRect(0, 0, overlaySize, overlaySize);
+        // 用径向渐变挖出中心透明区域（destination-out = 擦除）
+        ctx.globalCompositeOperation = 'destination-out';
+        const grad = ctx.createRadialGradient(c, c, 0, c, c, 380);
+        grad.addColorStop(0, 'rgba(0,0,0,1)');       // 中心：完全擦除（清晰）
+        grad.addColorStop(0.42, 'rgba(0,0,0,1)');    // 0-160px：完全清晰
+        grad.addColorStop(0.74, 'rgba(0,0,0,0.5)');  // 160-281px：渐暗
+        grad.addColorStop(1, 'rgba(0,0,0,0)');        // 380px+：不擦除（保持暗）
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, overlaySize, overlaySize);
+        ctx.globalCompositeOperation = 'source-over';
+        vc.refresh();
+
+        // WebGL 手动上传纹理（Phaser canvas texture 在 WebGL 下需手动上传）
+        const renderer = this.sys.game.renderer as any;
+        if (renderer && renderer.gl) {
+          const src = vc.source[0] as any;
+          if (src && src.glTexture && src.canvas) {
+            const gl = renderer.gl;
+            gl.bindTexture(gl.TEXTURE_2D, src.glTexture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src.canvas);
+          }
+        }
+      }
+    }
+
+    this.visionOverlay = this.add.image(400, 300, 'visionOverlay');
+    this.visionOverlay.setScrollFactor(0);
+    this.visionOverlay.setDepth(15);  // 在游戏对象(0-6)之上，UI(20)之下
+  }
+
+  /** 更新视野遮蔽位置（跟随玩家屏幕坐标） */
+  private updateVisionOverlay() {
+    if (!this.visionOverlay) return;
+    const cam = this.cameras.main;
+    this.visionOverlay.x = this.player.x - cam.scrollX;
+    this.visionOverlay.y = this.player.y - cam.scrollY;
   }
 
   // ── Win / Lose ───────────────────────────────────────────────────────────
