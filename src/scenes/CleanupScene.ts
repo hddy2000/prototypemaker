@@ -38,6 +38,9 @@ interface Monster {
   dying: boolean;         // 正在消散
 }
 
+/** 小道状态：安全(棕) → 预警(黄光1秒,可移动) → 危险(红光,移动即死) → 安全 */
+type PathState = 'safe' | 'warning' | 'danger';
+
 /** 规则怪谈小道（一二三木头人） */
 interface SidePath {
   id: string;
@@ -47,10 +50,10 @@ interface SidePath {
   entryRect: { x: number; y: number; w: number; h: number };
   horizRect: { x: number; y: number; w: number; h: number };
   exitRect: { x: number; y: number; w: number; h: number };
-  isYellow: boolean;        // 当前是否为危险（黄色）状态
+  state: PathState;          // 当前状态
   stateTimer: number;       // 当前状态剩余时间（ms）
   nextDuration: number;     // 下次状态持续时间
-  playerMoveAccum: number;  // 黄色期间玩家移动累计距离
+  playerMoveAccum: number;  // 危险期间玩家移动累计距离
   fillGraphics: Phaser.GameObjects.Graphics;  // 填充+边框
   label: Phaser.GameObjects.Text;              // 小道标识
 }
@@ -98,9 +101,10 @@ const PATH_WIDTH = 40;               // 小道宽度（刚好容纳玩家22px）
 const PATH_Y = 40;                  // 水平段的Y坐标（车厢上方）
 const PATH_SAFE_MIN = 3000;         // 安全状态最短持续时间（ms）
 const PATH_SAFE_MAX = 6000;         // 安全状态最长持续时间（ms）
-const PATH_DANGER_MIN = 1500;       // 危险(黄)状态最短持续时间（ms）
-const PATH_DANGER_MAX = 2500;       // 危险(黄)状态最长持续时间（ms）
-const PATH_MOVE_THRESHOLD = 0.5;     // 黄色期间单帧移动超过此距离即死（px）——任何明显移动都触发
+const PATH_WARNING_TIME = 1000;    // 预警(黄光)持续时间（ms），此期间可自由移动
+const PATH_DANGER_MIN = 1500;       // 危险(红光)状态最短持续时间（ms）
+const PATH_DANGER_MAX = 2500;       // 危险(红光)状态最长持续时间（ms）
+const PATH_MOVE_THRESHOLD = 0.5;     // 红光期间单帧移动超过此距离即死（px）——任何明显移动都触发
 
 // 燃料 / 距离
 const FUEL_MAX = 100;
@@ -328,7 +332,7 @@ export class CleanupScene extends Phaser.Scene {
         fromCar: def.fromCar,
         toCar: def.toCar,
         entryRect, horizRect, exitRect,
-        isYellow: false,
+        state: 'safe',
         stateTimer: initialSafe,
         nextDuration: 0,
         playerMoveAccum: 0,
@@ -340,14 +344,17 @@ export class CleanupScene extends Phaser.Scene {
     }
   }
 
-  /** 绘制单条小道（填充+Π形轮廓+门口高亮，安全/危险两套配色） */
+  /** 绘制单条小道（填充+Π形轮廓+门口高亮，安全/预警/危险三套配色） */
   private drawSidePath(path: SidePath) {
-    // 安全用暖棕色（与车厢深蓝灰色明显区分），危险用琥珀色
-    const fillColor = path.isYellow ? 0x665500 : 0x382e1c;
-    const strokeColor = path.isYellow ? 0xffaa00 : 0x8a7a3a;
-    const strokeWidth = path.isYellow ? 3 : 2;
-    const strokeAlpha = path.isYellow ? 1 : 0.9;
-    const doorColor = path.isYellow ? 0xffcc44 : 0xaa9a5a;
+    // 安全=暖棕色，预警=琥珀黄，危险=血红
+    let fillColor: number, strokeColor: number, strokeWidth: number, strokeAlpha: number, doorColor: number, labelColor: string;
+    if (path.state === 'danger') {
+      fillColor = 0x660000; strokeColor = 0xff0000; strokeWidth = 3; strokeAlpha = 1; doorColor = 0xff4444; labelColor = '#ff0000';
+    } else if (path.state === 'warning') {
+      fillColor = 0x665500; strokeColor = 0xffaa00; strokeWidth = 3; strokeAlpha = 1; doorColor = 0xffcc44; labelColor = '#ffaa00';
+    } else {
+      fillColor = 0x382e1c; strokeColor = 0x8a7a3a; strokeWidth = 2; strokeAlpha = 0.9; doorColor = 0xaa9a5a; labelColor = '#8a7a3a';
+    }
 
     const g = path.fillGraphics;
     const e = path.entryRect, h = path.horizRect, x = path.exitRect;
@@ -404,7 +411,7 @@ export class CleanupScene extends Phaser.Scene {
       g.fillPath();
     }
 
-    path.label.setColor(path.isYellow ? '#ffaa00' : '#8a7a3a');
+    path.label.setColor(labelColor);
   }
 
   /** 获取指定X范围内小道入口/出口造成的顶部间隙 */
@@ -828,14 +835,14 @@ export class CleanupScene extends Phaser.Scene {
     if (inPath) {
       // 在小道中：不限制Y轴到车厢范围，而是限制到小道范围
       // Y轴不做Clamp，由isBlockedForPlayer的碰撞检测限制
-      // 木头人判定：如果小道是黄色且玩家移动了，累计距离
-      if (inPath.isYellow) {
+      // 木头人判定：只有危险(红光)状态移动才触发秒杀，预警(黄光)可自由移动
+      if (inPath.state === 'danger') {
         const moveDist = Math.sqrt(
           (this.player.x - prevX) * (this.player.x - prevX) +
           (this.player.y - prevY) * (this.player.y - prevY)
         );
         if (moveDist > PATH_MOVE_THRESHOLD) {
-          this.dieFromPath('在小道变黄时违规移动，被规则吞噬！');
+          this.dieFromPath('小道红光时违规移动，被规则吞噬！');
           return;
         }
       }
@@ -918,16 +925,23 @@ export class CleanupScene extends Phaser.Scene {
     return null;
   }
 
-  /** 更新小道状态（一二三木头人：随机切换安全/危险） */
+  /** 更新小道状态：安全(棕) → 预警(黄光1秒) → 危险(红光) → 安全 */
   private updateSidePaths(delta: number) {
     for (const path of this.sidePaths) {
       path.stateTimer -= delta;
       if (path.stateTimer <= 0) {
-        path.isYellow = !path.isYellow;
-        if (path.isYellow) {
+        if (path.state === 'safe') {
+          // 安全 → 预警（黄光1秒，可自由移动）
+          path.state = 'warning';
+          path.stateTimer = PATH_WARNING_TIME;
+        } else if (path.state === 'warning') {
+          // 预警 → 危险（红光，移动即死）
+          path.state = 'danger';
           path.stateTimer = Phaser.Math.Between(PATH_DANGER_MIN, PATH_DANGER_MAX);
           path.playerMoveAccum = 0;
         } else {
+          // 危险 → 安全
+          path.state = 'safe';
           path.stateTimer = Phaser.Math.Between(PATH_SAFE_MIN, PATH_SAFE_MAX);
         }
         this.drawSidePath(path);
