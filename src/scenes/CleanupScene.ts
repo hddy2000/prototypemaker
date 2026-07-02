@@ -35,6 +35,7 @@ interface Monster {
   alive: boolean;
   pollutionDropTimer: number;
   carriageIndex: number;  // 当前所在车厢
+  homeCar: number;        // 出生车厢（追击范围基准）
   dying: boolean;         // 正在消散
 }
 
@@ -94,7 +95,7 @@ const POLLUTION_DEATH_TIME = 12000;  // 浓度爆表后宽限时间（毫秒）
 // 概率刷怪：残秽浓度 ≥50% 开始有概率刷新怪物
 const POLLUTION_SPAWN_MIN = 50;          // 开始概率刷怪的最低浓度
 const POLLUTION_SPAWN_CHECK_INTERVAL = 5000; // 概率检定间隔（毫秒）
-const POLLUTION_SPAWN_MAX_MONSTERS = 3;   // 场上最大怪物数
+const POLLUTION_SPAWN_MAX_MONSTERS = 1;   // 场上最大怪物数
 
 // 规则怪谈小道（一二三木头人）
 const PATH_WIDTH = 40;               // 小道宽度（刚好容纳玩家22px）
@@ -205,8 +206,8 @@ export class CleanupScene extends Phaser.Scene {
     this.createUI();
     this.setupInput();
 
-    // 初始一只怪物在尾车
-    this.spawnMonster(CAR_COUNT);
+    // 初始一只怪物在5号车厢
+    this.spawnMonster(5);
 
     // ── 音频初始化 ──
     this.cryingSound = this.sound.add('crying', { loop: true, volume: 0 });
@@ -609,6 +610,7 @@ export class CleanupScene extends Phaser.Scene {
       facing: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), 0).normalize(),
       speed: MONSTER_SPEED, wanderTimer: 0, alive: true,
       pollutionDropTimer: 0, carriageIndex,
+      homeCar: carriageIndex,
       dying: false,
     });
   }
@@ -621,9 +623,24 @@ export class CleanupScene extends Phaser.Scene {
 
       const target = this.isHidden ? null : this.player;
       if (target) {
-        const toPlayer = new Phaser.Math.Vector2(target.x - m.container.x, target.y - m.container.y);
-        const dist = toPlayer.length();
-        if (dist > 1) { toPlayer.normalize(); m.facing.lerp(toPlayer, 0.08).normalize(); }
+        // 追击范围限制：仅追击到出生车厢前后1节
+        const minCar = Math.max(1, m.homeCar - 1);
+        const maxCar = Math.min(CAR_COUNT, m.homeCar + 1);
+        const playerCar = this.getCarriageAt(this.player.x);
+        const inRange = playerCar >= minCar && playerCar <= maxCar;
+        if (inRange) {
+          const toPlayer = new Phaser.Math.Vector2(target.x - m.container.x, target.y - m.container.y);
+          const dist = toPlayer.length();
+          if (dist > 1) { toPlayer.normalize(); m.facing.lerp(toPlayer, 0.08).normalize(); }
+        } else {
+          // 玩家超出追击范围，怪物在边界徘徊
+          m.wanderTimer += delta;
+          if (m.wanderTimer > 1200) {
+            m.wanderTimer = 0;
+            const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+            m.facing.set(Math.cos(angle), Math.sin(angle));
+          }
+        }
       } else {
         m.wanderTimer += delta;
         if (m.wanderTimer > 1200) {
@@ -633,8 +650,16 @@ export class CleanupScene extends Phaser.Scene {
         }
       }
 
-      const newX = m.container.x + m.facing.x * m.speed * dt;
-      const newY = m.container.y + m.facing.y * m.speed * dt;
+      let newX = m.container.x + m.facing.x * m.speed * dt;
+      let newY = m.container.y + m.facing.y * m.speed * dt;
+
+      // 追击范围限制：怪物不能离开出生车厢前后1节
+      const minCar = Math.max(1, m.homeCar - 1);
+      const maxCar = Math.min(CAR_COUNT, m.homeCar + 1);
+      const minBoundary = this.carLeftX(minCar) + MONSTER_W / 2;
+      const maxBoundary = this.carRightX(maxCar) - MONSTER_W / 2;
+      if (newX < minBoundary) newX = minBoundary;
+      if (newX > maxBoundary) newX = maxBoundary;
 
       // 检查移动方向是否撞到封锁墙——撞到立刻消失
       const newCar = this.getCarriageAt(newX);
