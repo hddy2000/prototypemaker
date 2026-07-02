@@ -756,7 +756,7 @@ export class HauntedMansionScene extends Phaser.Scene {
     
     // Cone parameters - smaller in dark rooms
     const coneRadius = inDarkRoom ? this.viewRadius * 1.2 : this.viewRadius * 4;
-    const coneAngle = Math.PI / 2; // 90 degrees cone (1.5x of original 60 degrees)
+    const coneAngle = Math.PI / 2; // 90 degrees cone
 
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.94)';
@@ -764,19 +764,34 @@ export class HauntedMansionScene extends Phaser.Scene {
 
     ctx.globalCompositeOperation = 'destination-out';
     
-    // Draw cone/fan shape
+    // Raycasting for wall-occluded vision
+    const rayCount = 60; // Number of rays to cast
+    const startAngle = this.playerFacingAngle - coneAngle / 2;
+    const endAngle = this.playerFacingAngle + coneAngle / 2;
+    const angleStep = (endAngle - startAngle) / rayCount;
+    
+    ctx.beginPath();
+    ctx.moveTo(screenX, screenY);
+    
+    for (let i = 0; i <= rayCount; i++) {
+      const angle = startAngle + angleStep * i;
+      const rayEnd = this.castRay(this.player.x, this.player.y, angle, coneRadius);
+      
+      // Convert world coordinates to screen coordinates
+      const rayScreenX = rayEnd.x - this.cam.scrollX;
+      const rayScreenY = rayEnd.y - this.cam.scrollY;
+      
+      ctx.lineTo(rayScreenX, rayScreenY);
+    }
+    
+    ctx.closePath();
+    
+    // Apply gradient fill
     const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, coneRadius);
     gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
     gradient.addColorStop(0.7, 'rgba(0, 0, 0, 1)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = gradient;
-    
-    ctx.beginPath();
-    ctx.moveTo(screenX, screenY);
-    ctx.arc(screenX, screenY, coneRadius, 
-            this.playerFacingAngle - coneAngle / 2, 
-            this.playerFacingAngle + coneAngle / 2);
-    ctx.closePath();
     ctx.fill();
 
     ctx.globalCompositeOperation = 'source-over';
@@ -798,6 +813,25 @@ export class HauntedMansionScene extends Phaser.Scene {
     const screenX = this.player.x - this.cam.scrollX;
     const screenY = this.player.y - this.cam.scrollY;
     this.drawFog(screenX, screenY);
+  }
+
+  private castRay(originX: number, originY: number, angle: number, maxDist: number): { x: number; y: number } {
+    const step = 5; // Check every 5 pixels along the ray
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    
+    for (let dist = 0; dist < maxDist; dist += step) {
+      const checkX = originX + dirX * dist;
+      const checkY = originY + dirY * dist;
+      
+      // Check if this point is inside any obstacle
+      if (this.isObstacleAt(checkX, checkY, 1)) {
+        return { x: checkX, y: checkY };
+      }
+    }
+    
+    // No obstacle hit, return max distance point
+    return { x: originX + dirX * maxDist, y: originY + dirY * maxDist };
   }
 
   // ── UI ───────────────────────────────────────────────────────────────────
