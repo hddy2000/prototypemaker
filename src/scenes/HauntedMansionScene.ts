@@ -755,7 +755,7 @@ export class HauntedMansionScene extends Phaser.Scene {
     const inDarkRoom = playerRoom && !playerRoom.lightOn;
     
     // Cone parameters - smaller in dark rooms
-    const coneRadius = inDarkRoom ? this.viewRadius * 0.3 : this.viewRadius;
+    const coneRadius = inDarkRoom ? this.viewRadius * 0.6 : this.viewRadius * 2;
     const coneAngle = Math.PI / 3; // 60 degrees cone (PI/3 radians)
 
     ctx.globalCompositeOperation = 'source-over';
