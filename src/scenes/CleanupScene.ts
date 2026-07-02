@@ -121,7 +121,7 @@ const SEALER_PICKUP_RANGE = 30;
 
 export class CleanupScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle;
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; };
   private escKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private interactKey!: Phaser.Input.Keyboard.Key;  // E键交互
@@ -564,7 +564,12 @@ export class CleanupScene extends Phaser.Scene {
   // ── Input ────────────────────────────────────────────────────────────────
 
   private setupInput() {
-    this.cursors = this.input.keyboard!.createCursorKeys();
+    this.wasdKeys = {
+      W: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      A: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      S: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      D: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+    };
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
@@ -807,10 +812,10 @@ export class CleanupScene extends Phaser.Scene {
 
     const dt = delta / 1000;
     let vx = 0, vy = 0;
-    if (this.cursors.left.isDown) vx -= 1;
-    if (this.cursors.right.isDown) vx += 1;
-    if (this.cursors.up.isDown) vy -= 1;
-    if (this.cursors.down.isDown) vy += 1;
+    if (this.wasdKeys.A.isDown) vx -= 1;
+    if (this.wasdKeys.D.isDown) vx += 1;
+    if (this.wasdKeys.W.isDown) vy -= 1;
+    if (this.wasdKeys.S.isDown) vy += 1;
 
     if (vx !== 0 || vy !== 0) {
       const len = Math.sqrt(vx * vx + vy * vy);
@@ -1189,7 +1194,7 @@ export class CleanupScene extends Phaser.Scene {
     }).setInteractive({ useHandCursor: true }).setScrollFactor(0).setDepth(20);
     backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
 
-    this.add.text(400, 575, '方向键移动 • 空格吸取残秽 • E交互(拾取/封锁/投喂/躲藏) • 被怪物碰到即死 • 小道黄光时停下！', {
+    this.add.text(400, 575, 'WASD移动 • 空格吸取残秽 • E交互(拾取/封锁/投喂/躲藏) • 被怪物碰到即死 • 小道黄光时停下！', {
       fontSize: '12px', color: '#666666',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
   }

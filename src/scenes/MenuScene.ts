@@ -158,7 +158,7 @@ export class MenuScene extends Phaser.Scene {
     mkText(110, '清理残秽，投喂燃料，抵达下一站', { fontSize: '14px', color: '#888888' });
 
     mkText(150, '🎮 操作', { fontSize: '18px', color: '#44ddff', fontStyle: 'bold' });
-    mkText(178, '方向键 移动  •  空格 吸取残秽(按住)  •  E 交互(拾取/封锁/投喂/躲藏)  •  ESC 菜单', { fontSize: '13px', color: '#cccccc' });
+    mkText(178, 'WASD 移动  •  空格 吸取残秽(按住)  •  E 交互(拾取/封锁/投喂/躲藏)  •  ESC 菜单', { fontSize: '13px', color: '#cccccc' });
 
     mkText(215, '⚙️ 核心机制', { fontSize: '18px', color: '#44ddff', fontStyle: 'bold' });
     mkText(243, '• 残秽浓度自然增长并扩散，≥50%概率滋生怪物，爆表12秒即灭', { fontSize: '13px', color: '#cccccc' });
