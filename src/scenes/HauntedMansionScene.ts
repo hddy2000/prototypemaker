@@ -139,6 +139,11 @@ export class HauntedMansionScene extends Phaser.Scene {
   // Darkness debuff reduces view radius
   private darknessTimer = 0;
 
+  // Player facing direction for cone vision
+  private playerFacingAngle = 0; // radians, 0 = right, PI/2 = down
+  private lastMoveX = 0;
+  private lastMoveY = 0;
+
   // Chaos system
   private chaosValue = 0;
   private chaosThreshold = 5;
@@ -470,7 +475,9 @@ export class HauntedMansionScene extends Phaser.Scene {
     
     // Restore ghosts
     for (const ghost of this.ghosts) {
-      ghost.sprite.setVisible(ghost.alive);
+      if (ghost.sprite) {
+        ghost.sprite.setVisible(ghost.alive);
+      }
     }
     
     // Place player at corresponding position
@@ -501,6 +508,11 @@ export class HauntedMansionScene extends Phaser.Scene {
     for (const ghost of this.ghosts) {
       ghost.sprite.setVisible(false);
     }
+    // Clear room light overlays
+    for (const overlay of this.roomLightOverlays) {
+      overlay.destroy();
+    }
+    this.roomLightOverlays = [];
   }
 
   // ── Player ───────────────────────────────────────────────────────────────
@@ -608,7 +620,7 @@ export class HauntedMansionScene extends Phaser.Scene {
   // ── Wandering Ghosts (pre-spawned at game start) ─────────────────────────
 
   private createWanderingGhosts() {
-    // Ghosts only patrol on floors 2 and 3
+    // Ghosts only patrol on floors 2 and 3 (not floor 1)
     // Spawn ghosts on each floor's data
     for (let floor = 2; floor <= this.totalFloors; floor++) {
       const floorData = this.floorData.get(floor)!;
@@ -631,8 +643,8 @@ export class HauntedMansionScene extends Phaser.Scene {
             floorData.ghosts.push({
               sprite: null as any,
               body: null as any,
-              speed: 30,
-              chaseSpeed: 100,
+              speed: 24, // Reduced by 20% from 30
+              chaseSpeed: 80, // Reduced by 20% from 100
               direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
               isChasing: false,
               giveUpTimer: 0,
@@ -699,8 +711,8 @@ export class HauntedMansionScene extends Phaser.Scene {
     this.ghosts.push({
       sprite: container,
       body,
-      speed: 30,
-      chaseSpeed: 100,
+      speed: 24, // Reduced by 20% from 30
+      chaseSpeed: 80, // Reduced by 20% from 100
       direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
       isChasing: forceChase,
       giveUpTimer: forceChase ? 5000 : 0,
@@ -734,20 +746,37 @@ export class HauntedMansionScene extends Phaser.Scene {
 
   private drawFog(screenX: number, screenY: number) {
     const ctx = this.fogCtx;
-    const radius = this.darknessTimer > 0 ? this.viewRadius * 0.5 : this.viewRadius;
+    
+    // Check if player is in a dark room
+    const playerRoom = this.rooms.find(r => 
+      this.player.x >= r.x && this.player.x <= r.x + r.w &&
+      this.player.y >= r.y && this.player.y <= r.y + r.h
+    );
+    const inDarkRoom = playerRoom && !playerRoom.lightOn;
+    
+    // Cone parameters - smaller in dark rooms
+    const coneRadius = inDarkRoom ? this.viewRadius * 0.3 : this.viewRadius;
+    const coneAngle = Math.PI / 3; // 60 degrees cone (PI/3 radians)
 
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.94)';
     ctx.fillRect(0, 0, this.screenW, this.screenH);
 
     ctx.globalCompositeOperation = 'destination-out';
-    const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, radius);
+    
+    // Draw cone/fan shape
+    const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, coneRadius);
     gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
     gradient.addColorStop(0.7, 'rgba(0, 0, 0, 1)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = gradient;
+    
     ctx.beginPath();
-    ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+    ctx.moveTo(screenX, screenY);
+    ctx.arc(screenX, screenY, coneRadius, 
+            this.playerFacingAngle - coneAngle / 2, 
+            this.playerFacingAngle + coneAngle / 2);
+    ctx.closePath();
     ctx.fill();
 
     ctx.globalCompositeOperation = 'source-over';
@@ -905,6 +934,13 @@ export class HauntedMansionScene extends Phaser.Scene {
 
     // Debuff: confusion — invert controls
     if (this.hasDebuff('confusion')) { vx = -vx; vy = -vy; }
+
+    // Update facing direction based on movement
+    if (vx !== 0 || vy !== 0) {
+      this.playerFacingAngle = Math.atan2(vy, vx);
+      this.lastMoveX = vx;
+      this.lastMoveY = vy;
+    }
 
     if (vx !== 0 && vy !== 0) {
       const len = Math.sqrt(vx * vx + vy * vy);
