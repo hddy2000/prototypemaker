@@ -6,6 +6,13 @@ interface Room {
   x: number; y: number; w: number; h: number;
   name: string;
   centerX: number; centerY: number;
+  hasLight: boolean;           // 是否有灯（初始50%有灯）
+  lightOn: boolean;            // 灯是否开着
+  needsSpecialClue: boolean;   // 是否需要特殊线索才能开灯（20%房间）
+  specialClueFound: boolean;   // 是否已发现特殊线索
+  switchX: number;             // 开关X坐标
+  switchY: number;             // 开关Y坐标
+  ghostPatrolling: boolean;    // 是否有鬼在巡逻（会自动关灯）
 }
 
 interface Secret {
@@ -62,17 +69,25 @@ interface Debuff {
 export class HauntedMansionScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private escKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private eKey!: Phaser.Input.Keyboard.Key;
   private shiftKey!: Phaser.Input.Keyboard.Key;
 
-  // Map
-  private mapWidth = 2400;
-  private mapHeight = 1600;
+  // Map - 3 floor villa structure
+  private mapWidth = 900;
+  private mapHeight = 700;
   private obstacles: Obstacle[] = [];
   private rooms: Room[] = [];
   private mapGraphics!: Phaser.GameObjects.Graphics;
+  
+  // Floor system
+  private currentFloor = 1;
+  private totalFloors = 3;
+  private floorData: Map<number, { rooms: Room[]; obstacles: Obstacle[]; secrets: Secret[]; traps: Trap[]; ghosts: Ghost[] }> = new Map();
+  private stairs: { x: number; y: number; targetFloor: number; floor: number; sprite: Phaser.GameObjects.Container }[] = [];
+  private floorText!: Phaser.GameObjects.Text;
 
   // Fog of war
   private fogImage!: Phaser.GameObjects.Image;
@@ -124,6 +139,17 @@ export class HauntedMansionScene extends Phaser.Scene {
   // Darkness debuff reduces view radius
   private darknessTimer = 0;
 
+  // Chaos system
+  private chaosValue = 0;
+  private chaosThreshold = 5;
+  private isGhostRaging = false;
+  private rageTimer = 0;
+  private rageDuration = 8000; // 8 seconds
+  private chaosText!: Phaser.GameObjects.Text;
+
+  // Room light system
+  private roomLightOverlays: Phaser.GameObjects.Graphics[] = [];
+
   constructor() {
     super({ key: 'HauntedMansionScene' });
   }
@@ -134,9 +160,15 @@ export class HauntedMansionScene extends Phaser.Scene {
     this.cam = this.cameras.main;
     this.cam.setBounds(0, 0, this.mapWidth, this.mapHeight);
 
+    // Initialize floor data
+    for (let i = 1; i <= this.totalFloors; i++) {
+      this.floorData.set(i, { rooms: [], obstacles: [], secrets: [], traps: [], ghosts: [] });
+    }
+
     this.generateMansion();
     this.drawMap();
     this.createPlayer();
+    this.createStairs();
     this.createSecrets();
     this.createTraps();
     this.createWanderingGhosts();
@@ -150,91 +182,110 @@ export class HauntedMansionScene extends Phaser.Scene {
   // ── Mansion Generation ───────────────────────────────────────────────────
 
   private generateMansion() {
-    this.obstacles = [];
-    this.rooms = [];
-
-    // 3×2 grid of rooms
-    const cols = 3;
-    const rows = 2;
-    const roomGap = 60; // wall thickness between rooms
-    const usableW = this.mapWidth - 40;  // minus border
-    const usableH = this.mapHeight - 40;
-    const roomW = Math.floor((usableW - roomGap * (cols - 1)) / cols);
-    const roomH = Math.floor((usableH - roomGap * (rows - 1)) / rows);
-
-    const roomNames = [
-      '大厅', '书房', '厨房',
-      '卧室', '地下室', '阁楼',
+    // Generate 3 floors with 2x2 room layout each
+    const floorNames = [
+      ['大厅', '客厅', '厨房', '餐厅'],      // Floor 1
+      ['卧室', '书房', '浴室', '走廊'],      // Floor 2
+      ['阁楼', '储藏室', '阳台', '密室'],   // Floor 3
     ];
 
-    let idx = 0;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const x = 20 + c * (roomW + roomGap);
-        const y = 20 + r * (roomH + roomGap);
-        this.rooms.push({
-          x, y, w: roomW, h: roomH,
-          name: roomNames[idx % roomNames.length],
-          centerX: x + roomW / 2,
-          centerY: y + roomH / 2,
-        });
-        idx++;
+    for (let floor = 1; floor <= this.totalFloors; floor++) {
+      const floorData = this.floorData.get(floor)!;
+      floorData.rooms = [];
+      floorData.obstacles = [];
+
+      // 2×2 grid of rooms per floor
+      const cols = 2;
+      const rows = 2;
+      const roomGap = 40; // wall thickness between rooms
+      const border = 20;
+      const usableW = this.mapWidth - border * 2;
+      const usableH = this.mapHeight - border * 2;
+      const roomW = Math.floor((usableW - roomGap * (cols - 1)) / cols);
+      const roomH = Math.floor((usableH - roomGap * (rows - 1)) / rows);
+
+      let idx = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const x = border + c * (roomW + roomGap);
+          const y = border + r * (roomH + roomGap);
+          // 50% rooms have initial light
+          const hasLight = Math.random() < 0.5;
+          // 20% rooms need special clue to turn on light
+          const needsSpecialClue = !hasLight && Math.random() < 0.4; // ~20% of total
+          floorData.rooms.push({
+            x, y, w: roomW, h: roomH,
+            name: floorNames[floor - 1][idx],
+            centerX: x + roomW / 2,
+            centerY: y + roomH / 2,
+            hasLight,
+            lightOn: hasLight, // if has light, it's on initially
+            needsSpecialClue,
+            specialClueFound: false,
+            switchX: x + roomW - 40,
+            switchY: y + 40,
+            ghostPatrolling: false,
+          });
+          idx++;
+        }
+      }
+
+      // Border walls
+      floorData.obstacles.push({ x: 0, y: 0, w: this.mapWidth, h: border });
+      floorData.obstacles.push({ x: 0, y: this.mapHeight - border, w: this.mapWidth, h: border });
+      floorData.obstacles.push({ x: 0, y: 0, w: border, h: this.mapHeight });
+      floorData.obstacles.push({ x: this.mapWidth - border, y: 0, w: border, h: this.mapHeight });
+
+      // Room walls with doorways
+      const doorWidth = 60;
+
+      for (const room of floorData.rooms) {
+        // Top wall
+        if (room.y > border) {
+          const doorX = room.x + room.w / 2 - doorWidth / 2;
+          floorData.obstacles.push({ x: room.x, y: room.y - roomGap, w: doorX - room.x, h: roomGap });
+          floorData.obstacles.push({ x: doorX + doorWidth, y: room.y - roomGap, w: room.x + room.w - (doorX + doorWidth), h: roomGap });
+        }
+        // Left wall
+        if (room.x > border) {
+          const doorY = room.y + room.h / 2 - doorWidth / 2;
+          floorData.obstacles.push({ x: room.x - roomGap, y: room.y, w: roomGap, h: doorY - room.y });
+          floorData.obstacles.push({ x: room.x - roomGap, y: doorY + doorWidth, w: roomGap, h: room.y + room.h - (doorY + doorWidth) });
+        }
+        // Bottom wall
+        const isBottomRow = room.y + room.h >= this.mapHeight - border;
+        if (!isBottomRow) {
+          const doorX = room.x + room.w / 2 - doorWidth / 2;
+          floorData.obstacles.push({ x: room.x, y: room.y + room.h, w: doorX - room.x, h: roomGap });
+          floorData.obstacles.push({ x: doorX + doorWidth, y: room.y + room.h, w: room.x + room.w - (doorX + doorWidth), h: roomGap });
+        }
+        // Right wall
+        const isRightmost = room.x + room.w >= this.mapWidth - border;
+        if (!isRightmost) {
+          const doorY = room.y + room.h / 2 - doorWidth / 2;
+          floorData.obstacles.push({ x: room.x + room.w, y: room.y, w: roomGap, h: doorY - room.y });
+          floorData.obstacles.push({ x: room.x + room.w, y: doorY + doorWidth, w: roomGap, h: room.y + room.h - (doorY + doorWidth) });
+        }
+      }
+
+      // Add decorative furniture
+      for (const room of floorData.rooms) {
+        const decorCount = Phaser.Math.Between(2, 3);
+        for (let i = 0; i < decorCount; i++) {
+          const dw = Phaser.Math.Between(25, 60);
+          const dh = Phaser.Math.Between(25, 60);
+          const dx = Phaser.Math.Between(room.x + 30, room.x + room.w - 30 - dw);
+          const dy = Phaser.Math.Between(room.y + 30, room.y + room.h - 30 - dh);
+          const distToCenter = Phaser.Math.Distance.Between(dx, dy, room.centerX, room.centerY);
+          if (distToCenter < 80) continue;
+          floorData.obstacles.push({ x: dx, y: dy, w: dw, h: dh });
+        }
       }
     }
 
-    // Border walls
-    this.obstacles.push({ x: 0, y: 0, w: this.mapWidth, h: 20 });
-    this.obstacles.push({ x: 0, y: this.mapHeight - 20, w: this.mapWidth, h: 20 });
-    this.obstacles.push({ x: 0, y: 0, w: 20, h: this.mapHeight });
-    this.obstacles.push({ x: this.mapWidth - 20, y: 0, w: 20, h: this.mapHeight });
-
-    // Room walls with doorways
-    const doorWidth = 80;
-
-    for (const room of this.rooms) {
-      // Top wall
-      if (room.y > 20) {
-        // doorway in center
-        const doorX = room.x + room.w / 2 - doorWidth / 2;
-        this.obstacles.push({ x: room.x, y: room.y - roomGap, w: doorX - room.x, h: roomGap });
-        this.obstacles.push({ x: doorX + doorWidth, y: room.y - roomGap, w: room.x + room.w - (doorX + doorWidth), h: roomGap });
-      }
-      // Left wall
-      if (room.x > 20) {
-        const doorY = room.y + room.h / 2 - doorWidth / 2;
-        this.obstacles.push({ x: room.x - roomGap, y: room.y, w: roomGap, h: doorY - room.y });
-        this.obstacles.push({ x: room.x - roomGap, y: doorY + doorWidth, w: roomGap, h: room.y + room.h - (doorY + doorWidth) });
-      }
-      // Bottom wall (only for top-row rooms)
-      const isBottomRow = room.y + room.h >= this.mapHeight - 40;
-      if (!isBottomRow) {
-        const doorX = room.x + room.w / 2 - doorWidth / 2;
-        this.obstacles.push({ x: room.x, y: room.y + room.h, w: doorX - room.x, h: roomGap });
-        this.obstacles.push({ x: doorX + doorWidth, y: room.y + room.h, w: room.x + room.w - (doorX + doorWidth), h: roomGap });
-      }
-      // Right wall (only for non-rightmost rooms)
-      const isRightmost = room.x + room.w >= this.mapWidth - 40;
-      if (!isRightmost) {
-        const doorY = room.y + room.h / 2 - doorWidth / 2;
-        this.obstacles.push({ x: room.x + room.w, y: room.y, w: roomGap, h: doorY - room.y });
-        this.obstacles.push({ x: room.x + room.w, y: doorY + doorWidth, w: roomGap, h: room.y + room.h - (doorY + doorWidth) });
-      }
-    }
-
-    // Add some decorative furniture obstacles inside rooms
-    for (const room of this.rooms) {
-      const decorCount = Phaser.Math.Between(2, 4);
-      for (let i = 0; i < decorCount; i++) {
-        const dw = Phaser.Math.Between(30, 80);
-        const dh = Phaser.Math.Between(30, 80);
-        const dx = Phaser.Math.Between(room.x + 40, room.x + room.w - 40 - dw);
-        const dy = Phaser.Math.Between(room.y + 40, room.y + room.h - 40 - dh);
-        // Keep center area clear for secrets/traps
-        const distToCenter = Phaser.Math.Distance.Between(dx, dy, room.centerX, room.centerY);
-        if (distToCenter < 100) continue;
-        this.obstacles.push({ x: dx, y: dy, w: dw, h: dh });
-      }
-    }
+    // Set current floor data
+    this.rooms = this.floorData.get(this.currentFloor)!.rooms;
+    this.obstacles = this.floorData.get(this.currentFloor)!.obstacles;
   }
 
   // ── Drawing ──────────────────────────────────────────────────────────────
@@ -242,29 +293,45 @@ export class HauntedMansionScene extends Phaser.Scene {
   private drawMap() {
     this.mapGraphics = this.add.graphics();
 
-    // Floor
+    // Floor background
     this.mapGraphics.fillStyle(0x1a1a2e, 1);
     this.mapGraphics.fillRect(0, 0, this.mapWidth, this.mapHeight);
 
     // Room floors with slightly different shades
-    const shades = [0x1e1e3a, 0x222238, 0x1a2a2e, 0x2a1e2e, 0x1e2a1e, 0x2a2a1e];
+    const shades = [0x1e1e3a, 0x222238, 0x1a2a2e, 0x2a1e2e];
     this.rooms.forEach((room, i) => {
       this.mapGraphics.fillStyle(shades[i % shades.length], 1);
       this.mapGraphics.fillRect(room.x, room.y, room.w, room.h);
 
       // Room name text
-      this.add.text(room.centerX, room.y + 25, room.name, {
-        fontSize: '20px',
+      this.add.text(room.centerX, room.y + 20, room.name, {
+        fontSize: '18px',
         color: '#555577',
       }).setOrigin(0.5).setDepth(1);
+
+      // Draw light switch
+      const switchColor = room.lightOn ? 0xffff00 : (room.needsSpecialClue && !room.specialClueFound ? 0xff0000 : 0x888888);
+      this.mapGraphics.fillStyle(switchColor, 0.8);
+      this.mapGraphics.fillRect(room.switchX - 8, room.switchY - 8, 16, 16);
+      this.mapGraphics.lineStyle(2, 0xffffff, 0.6);
+      this.mapGraphics.strokeRect(room.switchX - 8, room.switchY - 8, 16, 16);
+
+      // Draw light overlay if light is off
+      if (!room.lightOn) {
+        const overlay = this.add.graphics();
+        overlay.fillStyle(0x000000, 0.7);
+        overlay.fillRect(room.x, room.y, room.w, room.h);
+        overlay.setDepth(2);
+        this.roomLightOverlays.push(overlay);
+      }
     });
 
     // Grid lines
     this.mapGraphics.lineStyle(1, 0x222244, 0.2);
-    for (let x = 0; x < this.mapWidth; x += 80) {
+    for (let x = 0; x < this.mapWidth; x += 60) {
       this.mapGraphics.lineBetween(x, 0, x, this.mapHeight);
     }
-    for (let y = 0; y < this.mapHeight; y += 80) {
+    for (let y = 0; y < this.mapHeight; y += 60) {
       this.mapGraphics.lineBetween(0, y, this.mapWidth, y);
     }
 
@@ -278,6 +345,161 @@ export class HauntedMansionScene extends Phaser.Scene {
     this.mapGraphics.lineStyle(2, 0x666688, 1);
     for (const room of this.rooms) {
       this.mapGraphics.strokeRect(room.x, room.y, room.w, room.h);
+    }
+  }
+
+  // ── Stairs ───────────────────────────────────────────────────────────────
+
+  private createStairs() {
+    // Create stairs for each floor
+    for (let floor = 1; floor <= this.totalFloors; floor++) {
+      const floorData = this.floorData.get(floor)!;
+      const rooms = floorData.rooms;
+      
+      // Place stairs in a corner room (bottom-right)
+      const stairRoom = rooms[3];
+      
+      if (floor < this.totalFloors) {
+        // Up stairs
+        const upStair = this.createStairSprite(stairRoom.centerX - 40, stairRoom.centerY, floor + 1, 'up', floor);
+        this.stairs.push(upStair);
+      }
+      
+      if (floor > 1) {
+        // Down stairs
+        const downStair = this.createStairSprite(stairRoom.centerX + 40, stairRoom.centerY, floor - 1, 'down', floor);
+        this.stairs.push(downStair);
+      }
+    }
+    
+    // Only show stairs for current floor
+    this.updateStairsVisibility();
+  }
+
+  private createStairSprite(x: number, y: number, targetFloor: number, direction: 'up' | 'down', floor: number) {
+    const container = this.add.container(x, y);
+    container.setDepth(3);
+    
+    // Stair base
+    const base = this.add.rectangle(0, 0, 50, 50, 0x8b4513, 0.8);
+    base.setStrokeStyle(2, 0xa0522d, 1);
+    
+    // Arrow indicator
+    const arrowText = direction === 'up' ? '↑' : '↓';
+    const arrow = this.add.text(0, -5, arrowText, {
+      fontSize: '24px',
+      color: '#ffcc00',
+    }).setOrigin(0.5);
+    
+    // Floor number
+    const floorText = this.add.text(0, 15, `${targetFloor}F`, {
+      fontSize: '14px',
+      color: '#ffffff',
+    }).setOrigin(0.5);
+    
+    container.add([base, arrow, floorText]);
+    
+    // Pulsing animation
+    this.tweens.add({
+      targets: container,
+      alpha: { from: 0.7, to: 1 },
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    });
+    
+    return { x, y, targetFloor, floor, sprite: container };
+  }
+
+  private updateStairsVisibility() {
+    for (const stair of this.stairs) {
+      stair.sprite.setVisible(stair.floor === this.currentFloor);
+    }
+  }
+
+  private checkStairs() {
+    for (const stair of this.stairs) {
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, stair.x, stair.y);
+      if (dist < 30) {
+        this.transitionToFloor(stair.targetFloor);
+        break;
+      }
+    }
+  }
+
+  private transitionToFloor(targetFloor: number) {
+    // Save current floor state
+    const currentFloorData = this.floorData.get(this.currentFloor)!;
+    currentFloorData.rooms = this.rooms;
+    currentFloorData.obstacles = this.obstacles;
+    currentFloorData.secrets = this.secrets;
+    currentFloorData.traps = this.traps;
+    currentFloorData.ghosts = this.ghosts;
+    
+    // Clear current floor objects
+    this.clearFloorObjects();
+    
+    // Load target floor
+    this.currentFloor = targetFloor;
+    const targetFloorData = this.floorData.get(targetFloor)!;
+    this.rooms = targetFloorData.rooms;
+    this.obstacles = targetFloorData.obstacles;
+    this.secrets = targetFloorData.secrets;
+    this.traps = targetFloorData.traps;
+    this.ghosts = targetFloorData.ghosts;
+    
+    // Redraw map
+    this.mapGraphics.clear();
+    this.drawMap();
+    
+    // Restore secrets visibility
+    for (const secret of this.secrets) {
+      if (secret.revealed) {
+        secret.sprite.setVisible(true);
+      }
+    }
+    
+    // Restore traps visibility
+    for (const trap of this.traps) {
+      if (trap.disarmed) {
+        trap.sprite.setVisible(true);
+        trap.sprite.setAlpha(0.3);
+      }
+    }
+    
+    // Restore ghosts
+    for (const ghost of this.ghosts) {
+      ghost.sprite.setVisible(ghost.alive);
+    }
+    
+    // Place player at corresponding position
+    const targetRoom = this.rooms[3]; // Bottom-right room where stairs are
+    this.player.x = targetRoom.centerX;
+    this.player.y = targetRoom.centerY + 30;
+    
+    // Update UI
+    this.updateFloorText();
+    
+    // Update stair visibility for new floor
+    this.updateStairsVisibility();
+    
+    // Visual effect
+    this.cam.flash(300, 255, 255, 200);
+    this.showMessage(`到达 ${targetFloor}F`);
+    this.time.delayedCall(1000, () => this.hideMessage());
+  }
+
+  private clearFloorObjects() {
+    // Hide all current floor objects
+    for (const secret of this.secrets) {
+      secret.sprite.setVisible(false);
+    }
+    for (const trap of this.traps) {
+      trap.sprite.setVisible(false);
+    }
+    for (const ghost of this.ghosts) {
+      ghost.sprite.setVisible(false);
     }
   }
 
@@ -386,27 +608,59 @@ export class HauntedMansionScene extends Phaser.Scene {
   // ── Wandering Ghosts (pre-spawned at game start) ─────────────────────────
 
   private createWanderingGhosts() {
-    // Spawn 4-5 wandering ghosts in non-start rooms
-    const count = Phaser.Math.Between(4, 5);
-    let placed = 0;
-    let attempts = 0;
+    // Ghosts only patrol on floors 2 and 3
+    // Spawn ghosts on each floor's data
+    for (let floor = 2; floor <= this.totalFloors; floor++) {
+      const floorData = this.floorData.get(floor)!;
+      const floorRooms = floorData.rooms;
+      const count = Phaser.Math.Between(2, 3);
+      let placed = 0;
+      let attempts = 0;
 
-    while (placed < count && attempts < 300) {
-      // Pick a random non-start room
-      const room = this.rooms[Phaser.Math.Between(1, this.rooms.length - 1)];
-      const x = Phaser.Math.Between(room.x + 60, room.x + room.w - 60);
-      const y = Phaser.Math.Between(room.y + 60, room.y + room.h - 60);
+      while (placed < count && attempts < 200) {
+        const room = floorRooms[Phaser.Math.Between(0, floorRooms.length - 1)];
+        const x = Phaser.Math.Between(room.x + 60, room.x + room.w - 60);
+        const y = Phaser.Math.Between(room.y + 60, room.y + room.h - 60);
 
-      // Don't spawn too close to player start
-      const distToPlayer = Phaser.Math.Distance.Between(x, y, this.rooms[0].centerX, this.rooms[0].centerY);
-      if (distToPlayer < 300) { attempts++; continue; }
-
-      if (!this.isInsideObstacle(x, y, 15)) {
-        this.spawnGhost(x, y);
-        placed++;
+        if (!this.isInsideObstacleForFloor(x, y, 15, floor)) {
+          // Only spawn ghost visuals on current floor
+          if (floor === this.currentFloor) {
+            this.spawnGhost(x, y);
+          } else {
+            // Store ghost data for other floors (invisible until visited)
+            floorData.ghosts.push({
+              sprite: null as any,
+              body: null as any,
+              speed: 30,
+              chaseSpeed: 100,
+              direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
+              isChasing: false,
+              giveUpTimer: 0,
+              giveUpDuration: 3000,
+              homeX: x,
+              homeY: y,
+              territoryRadius: 9999,
+              visionRange: 250,
+              patrolTimer: 0,
+              alive: true,
+            });
+          }
+          placed++;
+        }
+        attempts++;
       }
-      attempts++;
     }
+  }
+
+  private isInsideObstacleForFloor(x: number, y: number, radius: number, floor: number): boolean {
+    const obs = this.floorData.get(floor)!.obstacles;
+    for (const o of obs) {
+      const closestX = Phaser.Math.Clamp(x, o.x, o.x + o.w);
+      const closestY = Phaser.Math.Clamp(y, o.y, o.y + o.h);
+      const dist = Phaser.Math.Distance.Between(x, y, closestX, closestY);
+      if (dist < radius) return true;
+    }
+    return false;
   }
 
   // ── Ghosts ───────────────────────────────────────────────────────────────
@@ -520,24 +774,34 @@ export class HauntedMansionScene extends Phaser.Scene {
   // ── UI ───────────────────────────────────────────────────────────────────
 
   private createUI() {
-    this.healthText = this.add.text(16, 16, '生命: 100', {
+    this.floorText = this.add.text(16, 16, `楼层: ${this.currentFloor}F`, {
+      fontSize: '20px', color: '#ffcc00',
+      backgroundColor: '#000000',
+      padding: { x: 8, y: 4 },
+    }).setScrollFactor(0).setDepth(20);
+
+    this.healthText = this.add.text(16, 50, '生命: 100', {
       fontSize: '18px', color: '#ffffff',
     }).setScrollFactor(0).setDepth(20);
 
-    this.secretText = this.add.text(16, 40, `线索: 0/${this.totalSecrets}`, {
+    this.secretText = this.add.text(16, 74, `线索: 0/${this.totalSecrets}`, {
       fontSize: '18px', color: '#00ffff',
     }).setScrollFactor(0).setDepth(20);
 
-    this.scannerText = this.add.text(16, 64, '扫描器: 就绪 [空格扫描] | [E显形/解除]', {
+    this.scannerText = this.add.text(16, 98, '扫描器: 就绪 [空格扫描] | [E显形/解除]', {
       fontSize: '16px', color: '#88ff88',
     }).setScrollFactor(0).setDepth(20);
 
-    this.debuffText = this.add.text(16, 88, '', {
+    this.debuffText = this.add.text(16, 122, '', {
       fontSize: '16px', color: '#ff4444',
     }).setScrollFactor(0).setDepth(20);
 
-    this.staminaText = this.add.text(16, 112, '体力: 100 [Shift冲刺]', {
+    this.staminaText = this.add.text(16, 146, '体力: 100 [Shift冲刺]', {
       fontSize: '16px', color: '#88ff88',
+    }).setScrollFactor(0).setDepth(20);
+
+    this.chaosText = this.add.text(16, 170, `混沌: 0/${this.chaosThreshold}`, {
+      fontSize: '16px', color: '#ff88ff',
     }).setScrollFactor(0).setDepth(20);
 
     this.messageText = this.add.text(400, 500, '', {
@@ -553,10 +817,20 @@ export class HauntedMansionScene extends Phaser.Scene {
     backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
   }
 
+  private updateFloorText() {
+    this.floorText.setText(`楼层: ${this.currentFloor}F`);
+  }
+
   // ── Input ────────────────────────────────────────────────────────────────
 
   private setupInput() {
     this.cursors = this.input.keyboard!.createCursorKeys();
+    this.wasdKeys = {
+      W: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      A: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      S: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      D: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+    };
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
@@ -574,6 +848,7 @@ export class HauntedMansionScene extends Phaser.Scene {
     }
 
     this.handlePlayerMovement(delta);
+    this.checkStairs();
     this.handleScanner();
     this.handleReveal();
     this.updateTraps();
@@ -623,10 +898,10 @@ export class HauntedMansionScene extends Phaser.Scene {
     let speed = (isSprinting ? sprintSpeed : baseSpeed) * speedMul;
 
     let vx = 0, vy = 0;
-    if (this.cursors.left.isDown) vx -= speed;
-    if (this.cursors.right.isDown) vx += speed;
-    if (this.cursors.up.isDown) vy -= speed;
-    if (this.cursors.down.isDown) vy += speed;
+    if (this.cursors.left.isDown || this.wasdKeys.A.isDown) vx -= speed;
+    if (this.cursors.right.isDown || this.wasdKeys.D.isDown) vx += speed;
+    if (this.cursors.up.isDown || this.wasdKeys.W.isDown) vy -= speed;
+    if (this.cursors.down.isDown || this.wasdKeys.S.isDown) vy += speed;
 
     // Debuff: confusion — invert controls
     if (this.hasDebuff('confusion')) { vx = -vx; vy = -vy; }
@@ -710,6 +985,31 @@ export class HauntedMansionScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.eKey)) {
       let didSomething = false;
 
+      // Check light switch interaction first
+      for (const room of this.rooms) {
+        if (!room.hasLight) continue;
+        const distToSwitch = Phaser.Math.Distance.Between(this.player.x, this.player.y, room.switchX, room.switchY);
+        if (distToSwitch < 40) {
+          // Check if room needs special clue
+          if (room.needsSpecialClue && !room.specialClueFound) {
+            this.showMessage('这个房间需要特殊线索才能开灯');
+            this.time.delayedCall(1500, () => this.hideMessage());
+            return;
+          }
+          // Toggle light
+          room.lightOn = !room.lightOn;
+          this.updateRoomLightVisual(room);
+          if (room.lightOn) {
+            this.addChaos(1);
+            this.showMessage('开灯成功！');
+          } else {
+            this.showMessage('关灯');
+          }
+          this.time.delayedCall(1200, () => this.hideMessage());
+          return;
+        }
+      }
+
       // Reveal secrets
       for (const s of this.secrets) {
         if (s.collected || s.revealed) continue;
@@ -747,6 +1047,44 @@ export class HauntedMansionScene extends Phaser.Scene {
       if (didSomething) {
         this.showMessage('已显形/解除！靠近拾取线索');
         this.time.delayedCall(1200, () => this.hideMessage());
+      }
+    }
+  }
+
+  private addChaos(amount: number) {
+    this.chaosValue += amount;
+    this.chaosText.setText(`混沌: ${this.chaosValue}/${this.chaosThreshold}`);
+    
+    if (this.chaosValue >= this.chaosThreshold) {
+      this.chaosValue = 0;
+      this.chaosText.setText(`混沌: 0/${this.chaosThreshold}`);
+      this.triggerGhostRage();
+    }
+  }
+
+  private triggerGhostRage() {
+    this.isGhostRaging = true;
+    this.rageTimer = this.rageDuration;
+    this.showMessage('⚠ 鬼魂狂暴了！它们会追逐你！');
+    this.time.delayedCall(2000, () => this.hideMessage());
+    
+    // Make all ghosts on current floor chase immediately
+    for (const ghost of this.ghosts) {
+      if (ghost.alive) {
+        ghost.isChasing = true;
+        ghost.giveUpTimer = this.rageDuration;
+      }
+    }
+  }
+
+  private checkSpecialClueUnlock(clue: Secret) {
+    // Find rooms that need special clues and unlock one
+    for (const room of this.rooms) {
+      if (room.needsSpecialClue && !room.specialClueFound) {
+        room.specialClueFound = true;
+        this.showMessage(`发现特殊线索！\n${room.name}现在可以开灯了`);
+        this.time.delayedCall(2000, () => this.hideMessage());
+        break;
       }
     }
   }
@@ -799,6 +1137,16 @@ export class HauntedMansionScene extends Phaser.Scene {
   private updateGhosts(delta: number) {
     const dt = delta / 1000;
 
+    // Update rage timer
+    if (this.isGhostRaging) {
+      this.rageTimer -= delta;
+      if (this.rageTimer <= 0) {
+        this.isGhostRaging = false;
+        this.showMessage('鬼魂恢复了正常状态');
+        this.time.delayedCall(1500, () => this.hideMessage());
+      }
+    }
+
     for (const ghost of this.ghosts) {
       if (!ghost.alive) continue;
 
@@ -806,43 +1154,89 @@ export class HauntedMansionScene extends Phaser.Scene {
         ghost.sprite.x, ghost.sprite.y, this.player.x, this.player.y
       );
 
-      // Vision: can see player within range and line of sight
-      const canSee = distToPlayer < ghost.visionRange &&
-        !this.lineBlockedByObstacle(ghost.sprite.x, ghost.sprite.y, this.player.x, this.player.y);
+      // During rage, ghosts always chase regardless of distance
+      const shouldChase = this.isGhostRaging || (
+        distToPlayer < ghost.visionRange &&
+        !this.lineBlockedByObstacle(ghost.sprite.x, ghost.sprite.y, this.player.x, this.player.y)
+      );
 
-      if (canSee) {
+      if (shouldChase) {
         ghost.isChasing = true;
-        ghost.giveUpTimer = ghost.giveUpDuration;
+        ghost.giveUpTimer = this.isGhostRaging ? 999999 : ghost.giveUpDuration;
       } else if (ghost.giveUpTimer > 0) {
         ghost.giveUpTimer -= delta;
         if (ghost.giveUpTimer <= 0) ghost.isChasing = false;
       }
 
       if (ghost.isChasing) {
+        const speed = this.isGhostRaging ? ghost.chaseSpeed * 1.5 : ghost.chaseSpeed;
         const dir = new Phaser.Math.Vector2(
           this.player.x - ghost.sprite.x,
           this.player.y - ghost.sprite.y
         ).normalize();
-        const newX = ghost.sprite.x + dir.x * ghost.chaseSpeed * dt;
-        const newY = ghost.sprite.y + dir.y * ghost.chaseSpeed * dt;
+        const newX = ghost.sprite.x + dir.x * speed * dt;
+        const newY = ghost.sprite.y + dir.y * speed * dt;
         if (!this.isObstacleAt(newX, ghost.sprite.y, 11)) ghost.sprite.x = newX;
         if (!this.isObstacleAt(ghost.sprite.x, newY, 11)) ghost.sprite.y = newY;
       } else {
-        // Wander
-        ghost.patrolTimer += delta;
-        if (ghost.patrolTimer > 2000) {
-          ghost.patrolTimer = 0;
-          const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-          ghost.direction.set(Math.cos(angle), Math.sin(angle));
+        // Wander - only on floors 2-3
+        if (this.currentFloor >= 2) {
+          ghost.patrolTimer += delta;
+          if (ghost.patrolTimer > 2000) {
+            ghost.patrolTimer = 0;
+            const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+            ghost.direction.set(Math.cos(angle), Math.sin(angle));
+          }
+          const newX = ghost.sprite.x + ghost.direction.x * ghost.speed * dt;
+          const newY = ghost.sprite.y + ghost.direction.y * ghost.speed * dt;
+          if (!this.isObstacleAt(newX, ghost.sprite.y, 11)) ghost.sprite.x = newX;
+          else ghost.direction.x *= -1;
+          if (!this.isObstacleAt(ghost.sprite.x, newY, 11)) ghost.sprite.y = newY;
+          else ghost.direction.y *= -1;
+
+          // Check if ghost is in a room and turn off lights
+          this.checkGhostRoomLight(ghost);
         }
-        const newX = ghost.sprite.x + ghost.direction.x * ghost.speed * dt;
-        const newY = ghost.sprite.y + ghost.direction.y * ghost.speed * dt;
-        if (!this.isObstacleAt(newX, ghost.sprite.y, 11)) ghost.sprite.x = newX;
-        else ghost.direction.x *= -1;
-        if (!this.isObstacleAt(ghost.sprite.x, newY, 11)) ghost.sprite.y = newY;
-        else ghost.direction.y *= -1;
       }
     }
+  }
+
+  private checkGhostRoomLight(ghost: Ghost) {
+    for (const room of this.rooms) {
+      if (ghost.sprite.x >= room.x && ghost.sprite.x <= room.x + room.w &&
+          ghost.sprite.y >= room.y && ghost.sprite.y <= room.y + room.h) {
+        if (room.lightOn) {
+          room.lightOn = false;
+          room.ghostPatrolling = true;
+          this.updateRoomLightVisual(room);
+        }
+        break;
+      }
+    }
+  }
+
+  private updateRoomLightVisual(room: Room) {
+    // Remove old overlay
+    const overlayIndex = this.roomLightOverlays.findIndex((_, i) => 
+      this.rooms[i] === room
+    );
+    if (overlayIndex >= 0 && this.roomLightOverlays[overlayIndex]) {
+      this.roomLightOverlays[overlayIndex].destroy();
+      this.roomLightOverlays.splice(overlayIndex, 1);
+    }
+
+    // Add new overlay if light is off
+    if (!room.lightOn) {
+      const overlay = this.add.graphics();
+      overlay.fillStyle(0x000000, 0.7);
+      overlay.fillRect(room.x, room.y, room.w, room.h);
+      overlay.setDepth(2);
+      this.roomLightOverlays.push(overlay);
+    }
+
+    // Redraw map to update switch color
+    this.mapGraphics.clear();
+    this.drawMap();
   }
 
   // ── Collisions ───────────────────────────────────────────────────────────
@@ -861,6 +1255,12 @@ export class HauntedMansionScene extends Phaser.Scene {
           this.secretText.setText(`线索: ${found}/${this.totalSecrets}`);
           this.showMessage(`发现线索！\n${s.clue}`);
           this.time.delayedCall(3000, () => this.hideMessage());
+          
+          // Check if this clue unlocks a special room
+          this.checkSpecialClueUnlock(s);
+          
+          // Add chaos for finding clue
+          this.addChaos(1);
         } else if (s.detected) {
           this.showMessage('先按 [E] 显形线索！');
           this.time.delayedCall(1200, () => this.hideMessage());
