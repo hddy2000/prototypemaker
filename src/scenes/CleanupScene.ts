@@ -90,7 +90,8 @@ const POLLUTION_HIGH_THRESHOLD = 60;
 const POLLUTION_NATURAL_RATE = 0.4;  // 自然生成基础速率（每秒每车厢）
 const POLLUTION_SPAWN_THRESHOLD = 85; // 超过此阈值必定生成新怪物
 const SEAL_AUTO_REMOVE_TIME = 10000;  // 封锁器10秒后自动解除（毫秒）
-const POLLUTION_DEATH_TIME = 12000;  // 浓度爆表后宽限时间（毫秒）
+const POLLUTION_FULL_SPILL_RATE = 3.0; // 浓度满的车厢向相邻车厢加速扩散（每秒）
+const POLLUTION_DEATH_CARS = 3;       // 累计满浓度车厢数达到此值才死亡
 
 // 概率刷怪：残秽浓度 ≥50% 开始有概率刷新怪物
 const POLLUTION_SPAWN_MIN = 50;          // 开始概率刷怪的最低浓度
@@ -693,11 +694,9 @@ export class CleanupScene extends Phaser.Scene {
     this.monsters = this.monsters.filter(m => { if (!m.alive) { m.container.destroy(); return false; } return true; });
   }
 
-  /** 怪物消散：留下残秽（不解封门，门由计时器自动解除） */
+  /** 怪物消散：不掉落残秽（不解封门，门由计时器自动解除） */
   private killMonster(m: Monster) {
     m.dying = true;
-    // 留下残秽（封锁杀怪代价增加：15→25）
-    this.addPollution(m.carriageIndex, 25);
 
     // 消散动画
     this.tweens.add({
@@ -1123,12 +1122,22 @@ export class CleanupScene extends Phaser.Scene {
       this.redrawPollution(i);
     }
 
-    // 4. 浓度爆表判定
+    // 4. 浓度满的车厢加速相邻车厢积累 + 死亡判定（任意3节满才死）
+    let fullCount = 0;
     for (let i = 1; i <= CAR_COUNT; i++) {
       if (this.pollutionLevels[i] >= POLLUTION_MAX) {
-        this.pollutionHighTimer[i] += delta;
-        if (this.pollutionHighTimer[i] > POLLUTION_DEATH_TIME) { this.die(`${i}号车厢残秽浓度爆表，列车被吞没！`); return; }
-      } else { this.pollutionHighTimer[i] = 0; }
+        fullCount++;
+        // 加速向相邻车厢扩散
+        if (i > 1) {
+          this.pollutionLevels[i - 1] = Math.min(POLLUTION_MAX, this.pollutionLevels[i - 1] + POLLUTION_FULL_SPILL_RATE * dt);
+        }
+        if (i < CAR_COUNT) {
+          this.pollutionLevels[i + 1] = Math.min(POLLUTION_MAX, this.pollutionLevels[i + 1] + POLLUTION_FULL_SPILL_RATE * dt);
+        }
+      }
+    }
+    if (fullCount >= POLLUTION_DEATH_CARS) {
+      this.die(`${fullCount}节车厢残秽浓度全部爆表，列车被吞没！`); return;
     }
 
     // 5. 概率刷怪：残秽浓度 ≥50% 开始有概率刷新，浓度越高概率越大
