@@ -851,6 +851,13 @@ export class CleanupScene extends Phaser.Scene {
     if (this.cursors.right.isDown || this.wasdKeys.D.isDown) vx += 1;
     if (this.cursors.up.isDown || this.wasdKeys.W.isDown) vy -= 1;
     if (this.cursors.down.isDown || this.wasdKeys.S.isDown) vy += 1;
+
+    if (vx !== 0 || vy !== 0) {
+      const len = Math.sqrt(vx * vx + vy * vy);
+      vx = (vx / len) * speed; vy = (vy / len) * speed;
+    }
+    const half = PLAYER_SIZE / 2;
+
     // 记录移动前的位置（用于小道木头人判定）
     const prevX = this.player.x;
     const prevY = this.player.y;
