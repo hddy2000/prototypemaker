@@ -73,8 +73,8 @@ const CAR_Y = 120;
 const MAP_PAD = 40;
 
 // 玩家
-const PLAYER_SPEED = 175;
-const PLAYER_CARRY_SPEED = 140;   // 携带残秽时减速（正常速度的80%）
+const PLAYER_SPEED = 210;
+const PLAYER_CARRY_SPEED = 168;   // 携带残秽时减速（正常速度的80%）
 const PLAYER_CLEAN_SPEED = 55;    // 吸取残秽时几乎站定
 const PLAYER_SIZE = 22;
 
@@ -96,7 +96,7 @@ const POLLUTION_DEATH_CARS = 3;       // 累计满浓度车厢数达到此值才
 // 概率刷怪：残秽浓度 ≥50% 开始有概率刷新怪物
 const POLLUTION_SPAWN_MIN = 50;          // 开始概率刷怪的最低浓度
 const POLLUTION_SPAWN_CHECK_INTERVAL = 5000; // 概率检定间隔（毫秒）
-const POLLUTION_SPAWN_MAX_MONSTERS = 1;   // 场上最大怪物数
+const POLLUTION_SPAWN_MAX_MONSTERS = 2;   // 场上最大怪物数
 
 // 规则怪谈小道（一二三木头人）
 const PATH_WIDTH = 40;               // 小道宽度（刚好容纳玩家22px）
@@ -626,12 +626,12 @@ export class CleanupScene extends Phaser.Scene {
       if (m.dying) continue;
 
       const target = this.isHidden ? null : this.player;
+      // 活动范围：出生车厢前后1.5格（边界=homeCar±2的中心）
+      const rangeExtent = 1.5 * (CAR_W + CAR_GAP);
+      const minBoundary = Math.max(this.carLeftX(1) + MONSTER_W / 2, this.carCenterX(m.homeCar) - rangeExtent);
+      const maxBoundary = Math.min(this.carRightX(CAR_COUNT) - MONSTER_W / 2, this.carCenterX(m.homeCar) + rangeExtent);
       if (target) {
-        // 追击范围限制：仅追击到出生车厢前后1节
-        const minCar = Math.max(1, m.homeCar - 1);
-        const maxCar = Math.min(CAR_COUNT, m.homeCar + 1);
-        const playerCar = this.getCarriageAt(this.player.x);
-        const inRange = playerCar >= minCar && playerCar <= maxCar;
+        const inRange = this.player.x >= minBoundary && this.player.x <= maxBoundary;
         if (inRange) {
           const toPlayer = new Phaser.Math.Vector2(target.x - m.container.x, target.y - m.container.y);
           const dist = toPlayer.length();
@@ -657,11 +657,7 @@ export class CleanupScene extends Phaser.Scene {
       let newX = m.container.x + m.facing.x * m.speed * dt;
       let newY = m.container.y + m.facing.y * m.speed * dt;
 
-      // 追击范围限制：怪物不能离开出生车厢前后1节
-      const minCar = Math.max(1, m.homeCar - 1);
-      const maxCar = Math.min(CAR_COUNT, m.homeCar + 1);
-      const minBoundary = this.carLeftX(minCar) + MONSTER_W / 2;
-      const maxBoundary = this.carRightX(maxCar) - MONSTER_W / 2;
+      // 活动范围限制：怪物不能离开出生车厢前后1.5格
       if (newX < minBoundary) newX = minBoundary;
       if (newX > maxBoundary) newX = maxBoundary;
 
