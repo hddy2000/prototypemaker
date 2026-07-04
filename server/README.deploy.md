@@ -7,6 +7,13 @@ Fly.io deployment
 5. After deploy, your WebSocket endpoint will be:
    wss://<your-app-name>.fly.dev
 
+GitHub Actions auto-deploy
+
+1. In GitHub, create a repo secret named `FLY_API_TOKEN`.
+2. Generate the token locally with: `fly tokens create deploy -x 999999h`
+3. Paste that token into the repo secret.
+4. Push any change under `server/` and GitHub Actions will run `.github/workflows/fly-deploy.yml`.
+
 Client config
 
 1. Put the Fly URL into ../.env.production:
