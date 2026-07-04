@@ -25,3 +25,4 @@ Notes
 - This Fly app only deploys the Colyseus server in server/.
 - The Phaser client remains a separate static deployment.
 - For local external testing, keep using ngrok and .env.ngrok.
+- GitHub Actions server auto-deploy is triggered by changes under server/.
