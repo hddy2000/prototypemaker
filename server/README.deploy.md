@@ -26,3 +26,4 @@ Notes
 - The Phaser client remains a separate static deployment.
 - For local external testing, keep using ngrok and .env.ngrok.
 - GitHub Actions server auto-deploy is triggered by changes under server/.
+- If Fly Actions still fail after adding the repo secret, re-run a server-side change to validate the latest token.
