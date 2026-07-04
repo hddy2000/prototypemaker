@@ -63,7 +63,7 @@ export class DeathmatchScene extends Phaser.Scene {
       color: '#aaaaaa',
     }).setScrollFactor(0).setDepth(10);
 
-    this.add.text(10, 80, 'WASD/方向键移动，按 I 开枪。无时间限制，死亡后自动复活。', {
+    this.add.text(10, 80, 'WASD/方向键移动，按空格开枪。无时间限制，死亡后自动复活。', {
       fontSize: '15px',
       color: '#ffffff',
       wordWrap: { width: 340 },
@@ -85,7 +85,7 @@ export class DeathmatchScene extends Phaser.Scene {
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
-    this.shootKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this.shootKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     await this.connectToServer();
   }

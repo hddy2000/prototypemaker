@@ -121,7 +121,7 @@ export class MultiplayerScene extends Phaser.Scene {
     // Input
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
-    this.shootKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this.shootKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     // Connect to server
     await this.connectToServer();
@@ -362,7 +362,7 @@ export class MultiplayerScene extends Phaser.Scene {
     }
 
     if (me.role === 'hunter') {
-      this.objectiveText.setText('你是猎人：WASD/方向键移动，按 I 开枪。45 秒内击倒全部平民即获胜。');
+      this.objectiveText.setText('你是猎人：WASD/方向键移动，按空格开枪。45 秒内击倒全部平民即获胜。');
     } else if (me.alive === false) {
       this.objectiveText.setText('你已出局：保持观战，等待本回合结束后自动重开。');
     } else {
