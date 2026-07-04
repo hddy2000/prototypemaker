@@ -15,13 +15,19 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Verify Fly access
+        working-directory: server
+        run: |
+          flyctl auth whoami
+          flyctl status -a prototypemaker-colyseus
+
       - name: Deploy to Fly
         working-directory: server
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only -a prototypemaker-colyseus
