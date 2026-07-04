@@ -64,6 +64,31 @@ interface Debuff {
   remaining: number; // ms
 }
 
+type CrystalEffectType = 'light' | 'ghost_leave' | 'passage' | 'trap_disarm';
+
+interface CrystalEffect {
+  type: CrystalEffectType;
+  targetFloor: number;
+  targetRoomIndex?: number;  // which room on target floor
+}
+
+interface ResonanceCrystal {
+  id: number;
+  x: number; y: number;
+  floor: number;
+  groupId: number;
+  activated: boolean;
+  effect: CrystalEffect;
+  sprite: Phaser.GameObjects.Container | null;
+}
+
+interface CrystalGroup {
+  id: number;
+  crystalIds: [number, number];
+  completed: boolean;
+  effect: CrystalEffect;  // applied when both crystals activated
+}
+
 // ── Scene ──────────────────────────────────────────────────────────────────
 
 export class HauntedMansionScene extends Phaser.Scene {
@@ -74,6 +99,8 @@ export class HauntedMansionScene extends Phaser.Scene {
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private eKey!: Phaser.Input.Keyboard.Key;
   private shiftKey!: Phaser.Input.Keyboard.Key;
+  private fKey!: Phaser.Input.Keyboard.Key;
+  private qKey!: Phaser.Input.Keyboard.Key;
 
   // Map - 3 floor villa structure
   private mapWidth = 900;
@@ -152,8 +179,23 @@ export class HauntedMansionScene extends Phaser.Scene {
   private rageDuration = 8000; // 8 seconds
   private chaosText!: Phaser.GameObjects.Text;
 
+  // Floor transition guard
+  private isTransitioning = false;
+  private floorTexts: Phaser.GameObjects.Text[] = [];
+
   // Room light system
   private roomLightOverlays: Phaser.GameObjects.Graphics[] = [];
+
+  // Crystal resonance system
+  private crystals: ResonanceCrystal[] = [];
+  private crystalGroups: CrystalGroup[] = [];
+  private activeCrystalGroupId: number = -1;  // which group is currently being activated
+  private activeCrystalId: number = -1;       // which crystal was activated first
+  private crystalTimer: number = 0;           // ms remaining
+  private crystalTimerMax: number = 12000;    // 12 seconds to reach second crystal
+  private crystalTimerText!: Phaser.GameObjects.Text;
+  private crystalInfoText!: Phaser.GameObjects.Text;
+  private crystalsCompletedCount: number = 0;
 
   constructor() {
     super({ key: 'HauntedMansionScene' });
@@ -177,6 +219,7 @@ export class HauntedMansionScene extends Phaser.Scene {
     this.createSecrets();
     this.createTraps();
     this.createWanderingGhosts();
+    this.createCrystals();
     this.createFog();
     this.createUI();
     this.setupInput();
@@ -309,10 +352,11 @@ export class HauntedMansionScene extends Phaser.Scene {
       this.mapGraphics.fillRect(room.x, room.y, room.w, room.h);
 
       // Room name text
-      this.add.text(room.centerX, room.y + 20, room.name, {
+      const roomLabel = this.add.text(room.centerX, room.y + 20, room.name, {
         fontSize: '18px',
         color: '#555577',
       }).setOrigin(0.5).setDepth(1);
+      this.floorTexts.push(roomLabel);
 
       // Draw light switch
       const switchColor = room.lightOn ? 0xffff00 : (room.needsSpecialClue && !room.specialClueFound ? 0xff0000 : 0x888888);
@@ -423,17 +467,25 @@ export class HauntedMansionScene extends Phaser.Scene {
     }
   }
 
-  private checkStairs() {
+  private handleStairs() {
+    if (this.isTransitioning) return;
+    if (!Phaser.Input.Keyboard.JustDown(this.fKey)) return;
     for (const stair of this.stairs) {
+      if (stair.floor !== this.currentFloor) continue;
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, stair.x, stair.y);
-      if (dist < 30) {
+      if (dist < 50) {
         this.transitionToFloor(stair.targetFloor);
-        break;
+        return;
       }
     }
+    this.showMessage('附近没有楼梯');
+    this.time.delayedCall(1000, () => this.hideMessage());
   }
 
   private transitionToFloor(targetFloor: number) {
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
     // Save current floor state
     const currentFloorData = this.floorData.get(this.currentFloor)!;
     currentFloorData.rooms = this.rooms;
@@ -455,7 +507,6 @@ export class HauntedMansionScene extends Phaser.Scene {
     this.ghosts = targetFloorData.ghosts;
     
     // Redraw map
-    this.mapGraphics.clear();
     this.drawMap();
     
     // Restore secrets visibility
@@ -473,17 +524,27 @@ export class HauntedMansionScene extends Phaser.Scene {
       }
     }
     
-    // Restore ghosts
+    // Restore ghosts — create sprites for ghosts that don't have visuals yet
     for (const ghost of this.ghosts) {
-      if (ghost.sprite) {
-        ghost.sprite.setVisible(ghost.alive);
+      if (!ghost.sprite) {
+        // This ghost was stored without visuals (from another floor's data)
+        // Create visual sprite at its home position
+        const container = this.add.container(ghost.homeX, ghost.homeY);
+        container.setDepth(6);
+        const body = this.add.circle(0, 0, 14, 0xffffff, 0.7);
+        const eyes = this.add.rectangle(0, -2, 10, 4, 0xff0000);
+        const wisp = this.add.circle(0, 0, 20, 0xffffff, 0.15);
+        container.add([wisp, body, eyes]);
+        ghost.sprite = container;
+        ghost.body = body;
       }
+      ghost.sprite.setVisible(ghost.alive);
     }
     
-    // Place player at corresponding position
+    // Place player away from stairs — use the room center itself
     const targetRoom = this.rooms[3]; // Bottom-right room where stairs are
     this.player.x = targetRoom.centerX;
-    this.player.y = targetRoom.centerY + 30;
+    this.player.y = targetRoom.centerY + 60;
     
     // Update UI
     this.updateFloorText();
@@ -491,10 +552,16 @@ export class HauntedMansionScene extends Phaser.Scene {
     // Update stair visibility for new floor
     this.updateStairsVisibility();
     
+    // Refresh crystal sprites for new floor
+    this.refreshCrystalSprites();
+    
     // Visual effect
     this.cam.flash(300, 255, 255, 200);
     this.showMessage(`到达 ${targetFloor}F`);
     this.time.delayedCall(1000, () => this.hideMessage());
+
+    // Release transition lock after a short delay so player moves off stair zone
+    this.time.delayedCall(500, () => { this.isTransitioning = false; });
   }
 
   private clearFloorObjects() {
@@ -506,13 +573,22 @@ export class HauntedMansionScene extends Phaser.Scene {
       trap.sprite.setVisible(false);
     }
     for (const ghost of this.ghosts) {
-      ghost.sprite.setVisible(false);
+      if (ghost.sprite) ghost.sprite.setVisible(false);
+    }
+    // Destroy old map graphics to prevent leak
+    if (this.mapGraphics) {
+      this.mapGraphics.destroy();
     }
     // Clear room light overlays
     for (const overlay of this.roomLightOverlays) {
       overlay.destroy();
     }
     this.roomLightOverlays = [];
+    // Destroy room name texts
+    for (const t of this.floorTexts) {
+      t.destroy();
+    }
+    this.floorTexts = [];
   }
 
   // ── Player ───────────────────────────────────────────────────────────────
@@ -673,6 +749,288 @@ export class HauntedMansionScene extends Phaser.Scene {
       if (dist < radius) return true;
     }
     return false;
+  }
+
+  // ── Crystal Resonance System ─────────────────────────────────────────────
+
+  private createCrystals() {
+    // Group 0: 1F大厅 + 1F厨房 → effect: 2F书房灯亮
+    // Group 1: 2F卧室 + 2F浴室 → effect: 1F餐厅鬼魂离开
+    // Group 2: 3F阁楼 + 3F密室 → effect: 触发Boss战
+    const groupDefs = [
+      {
+        id: 0,
+        crystals: [
+          { floor: 1, roomIndex: 0 }, // 1F 大厅
+          { floor: 1, roomIndex: 2 }, // 1F 厨房
+        ],
+        effect: { type: 'light' as CrystalEffectType, targetFloor: 2, targetRoomIndex: 1 }, // 2F 书房
+      },
+      {
+        id: 1,
+        crystals: [
+          { floor: 2, roomIndex: 0 }, // 2F 卧室
+          { floor: 2, roomIndex: 2 }, // 2F 浴室
+        ],
+        effect: { type: 'ghost_leave' as CrystalEffectType, targetFloor: 1, targetRoomIndex: 3 }, // 1F 餐厅
+      },
+      {
+        id: 2,
+        crystals: [
+          { floor: 3, roomIndex: 0 }, // 3F 阁楼
+          { floor: 3, roomIndex: 3 }, // 3F 密室
+        ],
+        effect: { type: 'passage' as CrystalEffectType, targetFloor: 3, targetRoomIndex: 3 }, // 3F 密室
+      },
+    ];
+
+    let crystalId = 0;
+    for (const gDef of groupDefs) {
+      const crystalIds: [number, number] = [-1, -1];
+      for (let i = 0; i < 2; i++) {
+        const cDef = gDef.crystals[i];
+        const floorData = this.floorData.get(cDef.floor)!;
+        const room = floorData.rooms[cDef.roomIndex];
+        const x = room.centerX + Phaser.Math.Between(-40, 40);
+        const y = room.centerY + Phaser.Math.Between(-40, 40);
+
+        const crystal: ResonanceCrystal = {
+          id: crystalId,
+          x, y,
+          floor: cDef.floor,
+          groupId: gDef.id,
+          activated: false,
+          effect: gDef.effect,
+          sprite: null,
+        };
+        this.crystals.push(crystal);
+        crystalIds[i] = crystalId;
+        crystalId++;
+      }
+      this.crystalGroups.push({
+        id: gDef.id,
+        crystalIds,
+        completed: false,
+        effect: gDef.effect,
+      });
+    }
+
+    // Create sprites for current floor crystals
+    this.refreshCrystalSprites();
+  }
+
+  private refreshCrystalSprites() {
+    // Destroy old sprites
+    for (const c of this.crystals) {
+      if (c.sprite) {
+        c.sprite.destroy();
+        c.sprite = null;
+      }
+    }
+    // Create sprites for current floor
+    for (const c of this.crystals) {
+      if (c.floor !== this.currentFloor) continue;
+      if (c.activated) continue;
+      const container = this.add.container(c.x, c.y);
+      container.setDepth(4);
+      // Diamond shape
+      const gem = this.add.rectangle(0, 0, 18, 18, 0x4488ff);
+      gem.setRotation(Math.PI / 4);
+      const glow = this.add.circle(0, 0, 24, 0x4488ff, 0.2);
+      container.add([glow, gem]);
+      // Pulse animation
+      this.tweens.add({
+        targets: container,
+        alpha: { from: 0.7, to: 1 },
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.inOut',
+      });
+      c.sprite = container;
+    }
+  }
+
+  private handleCrystalActivation() {
+    if (!Phaser.Input.Keyboard.JustDown(this.qKey)) return;
+    // Check if player is near a crystal on current floor
+    for (const c of this.crystals) {
+      if (c.floor !== this.currentFloor || c.activated) continue;
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y);
+      if (dist < 40) {
+        this.activateCrystal(c);
+        return;
+      }
+    }
+  }
+
+  private activateCrystal(crystal: ResonanceCrystal) {
+    const group = this.crystalGroups.find(g => g.id === crystal.groupId)!;
+    if (group.completed) return;
+
+    if (this.activeCrystalGroupId === -1) {
+      // First crystal of the group
+      crystal.activated = true;
+      if (crystal.sprite) {
+        crystal.sprite.destroy();
+        crystal.sprite = null;
+      }
+      this.activeCrystalGroupId = group.id;
+      this.activeCrystalId = crystal.id;
+      this.crystalTimer = this.crystalTimerMax;
+      this.crystalTimerText.setVisible(true);
+      this.crystalInfoText.setVisible(true);
+      this.crystalInfoText.setText(`共振水晶已激活！限时到达配对水晶！`);
+      this.showMessage('水晶共振启动！限时到达配对水晶！');
+      this.time.delayedCall(2000, () => this.hideMessage());
+    } else if (this.activeCrystalGroupId === crystal.groupId) {
+      // Second crystal of same group - success!
+      crystal.activated = true;
+      if (crystal.sprite) {
+        crystal.sprite.destroy();
+        crystal.sprite = null;
+      }
+      group.completed = true;
+      this.crystalsCompletedCount++;
+      this.activeCrystalGroupId = -1;
+      this.activeCrystalId = -1;
+      this.crystalTimer = 0;
+      this.crystalTimerText.setVisible(false);
+      this.crystalInfoText.setVisible(false);
+      this.applyCrystalEffect(group);
+    } else {
+      // Different group - reset previous
+      const prevCrystal = this.crystals.find(c => c.id === this.activeCrystalId);
+      if (prevCrystal) {
+        prevCrystal.activated = false;
+        // Recreate sprite for previous crystal if on current floor
+        if (prevCrystal.floor === this.currentFloor && !prevCrystal.sprite) {
+          const container = this.add.container(prevCrystal.x, prevCrystal.y);
+          container.setDepth(4);
+          const gem = this.add.rectangle(0, 0, 18, 18, 0x4488ff);
+          gem.setRotation(Math.PI / 4);
+          const glow = this.add.circle(0, 0, 24, 0x4488ff, 0.2);
+          container.add([glow, gem]);
+          this.tweens.add({
+            targets: container,
+            alpha: { from: 0.7, to: 1 },
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.inOut',
+          });
+          prevCrystal.sprite = container;
+        }
+      }
+      // Activate new crystal
+      crystal.activated = true;
+      if (crystal.sprite) {
+        crystal.sprite.destroy();
+        crystal.sprite = null;
+      }
+      this.activeCrystalGroupId = group.id;
+      this.activeCrystalId = crystal.id;
+      this.crystalTimer = this.crystalTimerMax;
+      this.showMessage('切换目标水晶！限时到达配对水晶！');
+      this.time.delayedCall(2000, () => this.hideMessage());
+    }
+  }
+
+  private updateCrystalTimer(delta: number) {
+    if (this.activeCrystalGroupId === -1) return;
+    this.crystalTimer -= delta;
+    const secs = Math.ceil(this.crystalTimer / 1000);
+    this.crystalTimerText.setText(`⏱ ${secs}s`);
+    if (this.crystalTimer <= 0) {
+      // Timeout - reset
+      const crystal = this.crystals.find(c => c.id === this.activeCrystalId);
+      if (crystal) {
+        crystal.activated = false;
+        if (crystal.floor === this.currentFloor && !crystal.sprite) {
+          const container = this.add.container(crystal.x, crystal.y);
+          container.setDepth(4);
+          const gem = this.add.rectangle(0, 0, 18, 18, 0x4488ff);
+          gem.setRotation(Math.PI / 4);
+          const glow = this.add.circle(0, 0, 24, 0x4488ff, 0.2);
+          container.add([glow, gem]);
+          this.tweens.add({
+            targets: container,
+            alpha: { from: 0.7, to: 1 },
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.inOut',
+          });
+          crystal.sprite = container;
+        }
+      }
+      this.activeCrystalGroupId = -1;
+      this.activeCrystalId = -1;
+      this.crystalTimer = 0;
+      this.crystalTimerText.setVisible(false);
+      this.crystalInfoText.setVisible(false);
+      this.showMessage('共振超时！水晶已重置');
+      this.time.delayedCall(2000, () => this.hideMessage());
+    }
+  }
+
+  private applyCrystalEffect(group: CrystalGroup) {
+    const effect = group.effect;
+    const targetFloorData = this.floorData.get(effect.targetFloor)!;
+
+    switch (effect.type) {
+      case 'light': {
+        // Turn on light in target room
+        if (effect.targetRoomIndex !== undefined) {
+          const room = targetFloorData.rooms[effect.targetRoomIndex];
+          room.lightOn = true;
+          room.hasLight = true;
+          this.showMessage(`共振效果：${effect.targetFloor}F ${room.name} 的灯亮了！`);
+          this.time.delayedCall(3000, () => this.hideMessage());
+        }
+        break;
+      }
+      case 'ghost_leave': {
+        // Remove ghosts from target room
+        if (effect.targetRoomIndex !== undefined) {
+          const room = targetFloorData.rooms[effect.targetRoomIndex];
+          // Mark ghosts in that room as dead
+          for (const ghost of targetFloorData.ghosts) {
+            if (ghost.homeX >= room.x && ghost.homeX <= room.x + room.w &&
+                ghost.homeY >= room.y && ghost.homeY <= room.y + room.h) {
+              ghost.alive = false;
+              if (ghost.sprite) {
+                ghost.sprite.setVisible(false);
+              }
+            }
+          }
+          this.showMessage(`共振效果：${effect.targetFloor}F ${room.name} 的鬼魂被驱散了！`);
+          this.time.delayedCall(3000, () => this.hideMessage());
+        }
+        break;
+      }
+      case 'passage': {
+        // Open passage - for now just show message
+        this.showMessage(`共振效果：通往秘密区域的通道已开启！`);
+        this.time.delayedCall(3000, () => this.hideMessage());
+        break;
+      }
+      case 'trap_disarm': {
+        // Disarm traps in target room
+        if (effect.targetRoomIndex !== undefined) {
+          const room = targetFloorData.rooms[effect.targetRoomIndex];
+          for (const trap of targetFloorData.traps) {
+            if (trap.x >= room.x && trap.x <= room.x + room.w &&
+                trap.y >= room.y && trap.y <= room.y + room.h) {
+              trap.disarmed = true;
+            }
+          }
+          this.showMessage(`共振效果：${effect.targetFloor}F ${room.name} 的陷阱已解除！`);
+          this.time.delayedCall(3000, () => this.hideMessage());
+        }
+        break;
+      }
+    }
   }
 
   // ── Ghosts ───────────────────────────────────────────────────────────────
@@ -867,6 +1225,18 @@ export class HauntedMansionScene extends Phaser.Scene {
       fontSize: '16px', color: '#ff88ff',
     }).setScrollFactor(0).setDepth(20);
 
+    this.crystalTimerText = this.add.text(400, 50, '', {
+      fontSize: '28px', color: '#ffcc00',
+      backgroundColor: '#000000',
+      padding: { x: 12, y: 6 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
+
+    this.crystalInfoText = this.add.text(400, 80, '', {
+      fontSize: '16px', color: '#4488ff',
+      backgroundColor: '#000000',
+      padding: { x: 8, y: 4 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
+
     this.messageText = this.add.text(400, 500, '', {
       fontSize: '22px', color: '#ffffff', align: 'center',
       backgroundColor: '#000000', padding: { x: 16, y: 8 },
@@ -898,6 +1268,8 @@ export class HauntedMansionScene extends Phaser.Scene {
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.shiftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+    this.fKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
+    this.qKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
   }
 
   // ── Update Loop ──────────────────────────────────────────────────────────
@@ -911,9 +1283,11 @@ export class HauntedMansionScene extends Phaser.Scene {
     }
 
     this.handlePlayerMovement(delta);
-    this.checkStairs();
+    this.handleStairs();
     this.handleScanner();
     this.handleReveal();
+    this.handleCrystalActivation();
+    this.updateCrystalTimer(delta);
     this.updateTraps();
     this.updateGhosts(delta);
     this.updateBossGhost(delta);
@@ -1218,7 +1592,7 @@ export class HauntedMansionScene extends Phaser.Scene {
     }
 
     for (const ghost of this.ghosts) {
-      if (!ghost.alive) continue;
+      if (!ghost.alive || !ghost.sprite) continue;
 
       const distToPlayer = Phaser.Math.Distance.Between(
         ghost.sprite.x, ghost.sprite.y, this.player.x, this.player.y
@@ -1304,8 +1678,10 @@ export class HauntedMansionScene extends Phaser.Scene {
       this.roomLightOverlays.push(overlay);
     }
 
-    // Redraw map to update switch color
-    this.mapGraphics.clear();
+    // Destroy old mapGraphics and redraw
+    if (this.mapGraphics) {
+      this.mapGraphics.destroy();
+    }
     this.drawMap();
   }
 
@@ -1344,7 +1720,7 @@ export class HauntedMansionScene extends Phaser.Scene {
     // Ghosts
     if (this.damageCooldown <= 0) {
       for (const ghost of this.ghosts) {
-        if (!ghost.alive) continue;
+        if (!ghost.alive || !ghost.sprite) continue;
         const d = Phaser.Math.Distance.Between(
           this.player.x, this.player.y, ghost.sprite.x, ghost.sprite.y
         );
@@ -1380,9 +1756,9 @@ export class HauntedMansionScene extends Phaser.Scene {
     const doTeleport = Math.random() < 0.3;
 
     // Knockback
-    const nearestGhost = this.ghosts.filter(g => g.alive)
+    const nearestGhost = this.ghosts.filter(g => g.alive && g.sprite)
       .reduce((closest, g) => {
-        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, g.sprite.x, g.sprite.y);
+        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, g.sprite!.x, g.sprite!.y);
         return d < closest.dist ? { ghost: g, dist: d } : closest;
       }, { ghost: null as Ghost | null, dist: Infinity });
 
