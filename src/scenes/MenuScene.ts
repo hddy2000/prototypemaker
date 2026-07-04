@@ -53,6 +53,11 @@ export class MenuScene extends Phaser.Scene {
       name: '多人躲猫猫测试',
       description: '【多人联机】第一个玩家是猎人，按 I 开枪；后续玩家扮演平民，活到倒计时结束即胜利！',
     },
+    {
+      key: 'DeathmatchScene',
+      name: '多人互射测试',
+      description: '【多人联机】WASD/方向键移动，按 I 开枪，死亡无限复活，无时间限制，专门用来联机射击调试。',
+    },
     // Add new prototypes here
     // Add new prototypes here
   ];

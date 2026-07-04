@@ -10,6 +10,7 @@ import { ConvoyScene } from './scenes/ConvoyScene';
 import { EcholocationScene } from './scenes/EcholocationScene';
 import { GreedCurseScene } from './scenes/GreedCurseScene';
 import { MultiplayerScene } from './scenes/MultiplayerScene';
+import { DeathmatchScene } from './scenes/DeathmatchScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -26,7 +27,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene],
 };
 
 new Phaser.Game(config);
