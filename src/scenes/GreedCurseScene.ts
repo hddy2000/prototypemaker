@@ -328,6 +328,9 @@ export class GreedCurseScene extends Phaser.Scene {
     this.fogCanvas.height = this.screenH;
     this.fogCtx = this.fogCanvas.getContext('2d')!;
 
+    if (this.textures.exists(this.fogTextureKey)) {
+      this.textures.remove(this.fogTextureKey);
+    }
     this.textures.addCanvas(this.fogTextureKey, this.fogCanvas);
 
     this.fogImage = this.add.image(0, 0, this.fogTextureKey);

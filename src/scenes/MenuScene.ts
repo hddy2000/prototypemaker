@@ -76,6 +76,11 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    // Clear stale references from previous scene instance (scene.restart/start reuses the same object)
+    this.menuItems = [];
+    this.selectedIndex = 0;
+    this.scrollOffset = 0;
+
     // Title
     this.add.text(400, 80, 'Prototype Maker', {
       fontSize: '48px',

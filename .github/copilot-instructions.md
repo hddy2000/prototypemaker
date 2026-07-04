@@ -35,3 +35,6 @@ Phaser 3 + TypeScript + Vite game prototype development environment.
 - `RenderTexture.erase()` does NOT work in WebGL — use Canvas + manual `gl.texImage2D()` upload instead
 - `CanvasTexture.refresh()` and `TextureSource.update()` do NOT upload canvas data to WebGL texture — must manually call `gl.texImage2D()`
 - For fog of war: use HTMLCanvasElement with `destination-out` composite + manual WebGL texture upload
+- `scene.start()` reuses the same scene object — ALL instance properties (arrays, counters) must be reset in `create()` to avoid stale references
+- Text objects' textures are destroyed on scene shutdown — stale references in uncleared arrays will cause `glTexture null` errors
+- `textures.addCanvas()` warns "key already in use" on scene restart — call `textures.exists()` + `textures.remove()` before `addCanvas()`

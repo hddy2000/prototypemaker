@@ -293,6 +293,9 @@ export class MazeScene extends Phaser.Scene {
     this.fogCtx = this.fogCanvas.getContext('2d')!;
 
     // Add the canvas as a Phaser texture
+    if (this.textures.exists(this.fogTextureKey)) {
+      this.textures.remove(this.fogTextureKey);
+    }
     this.textures.addCanvas(this.fogTextureKey, this.fogCanvas);
 
     // Create an image using the canvas texture, fixed to camera
