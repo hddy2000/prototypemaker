@@ -50,8 +50,8 @@ export class MenuScene extends Phaser.Scene {
     },
     {
       key: 'MultiplayerScene',
-      name: '多人联机测试',
-      description: '【多人联机】Colyseus 权威服务器，方向键移动，多人同步测试！',
+      name: '多人躲猫猫测试',
+      description: '【多人联机】第一个玩家是猎人，按 I 开枪；后续玩家扮演平民，活到倒计时结束即胜利！',
     },
     // Add new prototypes here
     // Add new prototypes here
