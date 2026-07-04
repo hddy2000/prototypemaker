@@ -25,6 +25,11 @@ jobs:
       - name: Verify Fly access
         working-directory: server
         run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "FLY_API_TOKEN is missing"
+            exit 1
+          fi
+          echo "FLY_API_TOKEN is present (${#FLY_API_TOKEN} chars)"
           flyctl auth whoami
           flyctl status -a prototypemaker-colyseus
 
