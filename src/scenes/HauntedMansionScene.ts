@@ -168,8 +168,6 @@ export class HauntedMansionScene extends Phaser.Scene {
 
   // Player facing direction for cone vision
   private playerFacingAngle = 0; // radians, 0 = right, PI/2 = down
-  private lastMoveX = 0;
-  private lastMoveY = 0;
 
   // Chaos system
   private chaosValue = 0;
@@ -1346,8 +1344,6 @@ export class HauntedMansionScene extends Phaser.Scene {
     // Update facing direction based on movement
     if (vx !== 0 || vy !== 0) {
       this.playerFacingAngle = Math.atan2(vy, vx);
-      this.lastMoveX = vx;
-      this.lastMoveY = vy;
     }
 
     if (vx !== 0 && vy !== 0) {
@@ -1521,7 +1517,7 @@ export class HauntedMansionScene extends Phaser.Scene {
     }
   }
 
-  private checkSpecialClueUnlock(clue: Secret) {
+  private checkSpecialClueUnlock(_clue: Secret) {
     // Find rooms that need special clues and unlock one
     for (const room of this.rooms) {
       if (room.needsSpecialClue && !room.specialClueFound) {

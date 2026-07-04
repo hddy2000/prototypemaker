@@ -6,6 +6,10 @@ import { EscortScene } from './scenes/EscortScene';
 import { TowerDefenseScene } from './scenes/TowerDefenseScene';
 import { HauntedMansionScene } from './scenes/HauntedMansionScene';
 import { CleanupScene } from './scenes/CleanupScene';
+import { ConvoyScene } from './scenes/ConvoyScene';
+import { EcholocationScene } from './scenes/EcholocationScene';
+import { GreedCurseScene } from './scenes/GreedCurseScene';
+import { MultiplayerScene } from './scenes/MultiplayerScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -18,7 +22,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene],
 };
 
 new Phaser.Game(config);
