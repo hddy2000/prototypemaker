@@ -48,6 +48,7 @@ export class EscortScene extends Phaser.Scene {
   private itemA!: Phaser.GameObjects.Container; // 物品A跟随玩家
   private itemASprite!: Phaser.GameObjects.Rectangle;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private escKey!: Phaser.Input.Keyboard.Key;
   private shiftKey!: Phaser.Input.Keyboard.Key;
 
@@ -320,6 +321,9 @@ export class EscortScene extends Phaser.Scene {
     this.fogCanvas.height = this.screenH;
     this.fogCtx = this.fogCanvas.getContext('2d')!;
 
+    if (this.textures.exists(this.fogTextureKey)) {
+      this.textures.remove(this.fogTextureKey);
+    }
     this.textures.addCanvas(this.fogTextureKey, this.fogCanvas);
 
     this.fogImage = this.add.image(0, 0, this.fogTextureKey);
@@ -456,6 +460,7 @@ export class EscortScene extends Phaser.Scene {
 
   private setupInput() {
     this.cursors = this.input.keyboard!.createCursorKeys();
+    this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.shiftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
   }
@@ -487,7 +492,9 @@ export class EscortScene extends Phaser.Scene {
   private updateStamina(delta: number) {
     const dt = delta / 1000;
     const moving = this.cursors.left.isDown || this.cursors.right.isDown ||
-                   this.cursors.up.isDown || this.cursors.down.isDown;
+                   this.cursors.up.isDown || this.cursors.down.isDown ||
+                   this.wasdKeys.A.isDown || this.wasdKeys.D.isDown ||
+                   this.wasdKeys.W.isDown || this.wasdKeys.S.isDown;
 
     // 判断是否在冲刺：按住Shift + 有体力 + 在移动
     this.isSprinting = this.shiftKey.isDown && this.stamina > 0 && moving;
@@ -520,10 +527,10 @@ export class EscortScene extends Phaser.Scene {
     let vx = 0;
     let vy = 0;
 
-    if (this.cursors.left.isDown) vx -= speed;
-    if (this.cursors.right.isDown) vx += speed;
-    if (this.cursors.up.isDown) vy -= speed;
-    if (this.cursors.down.isDown) vy += speed;
+    if (this.cursors.left.isDown || this.wasdKeys.A.isDown) vx -= speed;
+    if (this.cursors.right.isDown || this.wasdKeys.D.isDown) vx += speed;
+    if (this.cursors.up.isDown || this.wasdKeys.W.isDown) vy -= speed;
+    if (this.cursors.down.isDown || this.wasdKeys.S.isDown) vy += speed;
 
     if (vx !== 0 && vy !== 0) {
       const len = Math.sqrt(vx * vx + vy * vy);

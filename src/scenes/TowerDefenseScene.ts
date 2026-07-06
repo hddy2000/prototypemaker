@@ -88,6 +88,7 @@ export class TowerDefenseScene extends Phaser.Scene {
   // Player (the carrier / mover)
   private player!: Phaser.GameObjects.Rectangle;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private escKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private eKey!: Phaser.Input.Keyboard.Key;
@@ -247,6 +248,7 @@ export class TowerDefenseScene extends Phaser.Scene {
 
     // ─── Input ───────────────────────────────────────────────────────
     this.cursors = this.input.keyboard!.createCursorKeys();
+    this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
@@ -257,7 +259,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.waveText = this.add.text(400, 10, '', { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5, 0).setDepth(50);
     this.coreHpText = this.add.text(400, 315, '', { fontSize: '11px', color: '#ffffff' }).setOrigin(0.5, 0).setDepth(50);
     this.statusText = this.add.text(400, 580, '', { fontSize: '14px', color: '#00ffaa' }).setOrigin(0.5).setDepth(50);
-    this.hintText = this.add.text(400, 460, '将塔从仓库推出，然后走进即可搬运！\n放置到核心周围的发光槽位上。按 [E] 升级附近的塔。', {
+    this.hintText = this.add.text(400, 460, 'WASD/方向键移动。将塔从仓库推出，然后走进即可搬运！\n放置到核心周围的发光槽位上。按 [E] 升级附近的塔。', {
       fontSize: '12px', color: '#888888', align: 'center',
     }).setOrigin(0.5).setDepth(50);
 
@@ -469,12 +471,12 @@ export class TowerDefenseScene extends Phaser.Scene {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     const accel = 800;
 
-    if (this.cursors.left.isDown) body.setAccelerationX(-accel);
-    else if (this.cursors.right.isDown) body.setAccelerationX(accel);
+    if (this.cursors.left.isDown || this.wasdKeys.A.isDown) body.setAccelerationX(-accel);
+    else if (this.cursors.right.isDown || this.wasdKeys.D.isDown) body.setAccelerationX(accel);
     else body.setAccelerationX(0);
 
-    if (this.cursors.up.isDown) body.setAccelerationY(-accel);
-    else if (this.cursors.down.isDown) body.setAccelerationY(accel);
+    if (this.cursors.up.isDown || this.wasdKeys.W.isDown) body.setAccelerationY(-accel);
+    else if (this.cursors.down.isDown || this.wasdKeys.S.isDown) body.setAccelerationY(accel);
     else body.setAccelerationY(0);
 
     // ─── Carrying a tower: move it with the player ───────────────────

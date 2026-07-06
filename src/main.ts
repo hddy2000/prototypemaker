@@ -7,11 +7,20 @@ import { TowerDefenseScene } from './scenes/TowerDefenseScene';
 import { HauntedMansionScene } from './scenes/HauntedMansionScene';
 import { CleanupScene } from './scenes/CleanupScene';
 import { PinballScene } from './scenes/PinballScene';
+import { ConvoyScene } from './scenes/ConvoyScene';
+import { EcholocationScene } from './scenes/EcholocationScene';
+import { GreedCurseScene } from './scenes/GreedCurseScene';
+import { MultiplayerScene } from './scenes/MultiplayerScene';
+import { DeathmatchScene } from './scenes/DeathmatchScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width: 800,
   height: 600,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
   physics: {
     default: 'arcade',
     arcade: {
@@ -19,7 +28,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, PinballScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene],
 };
 
 new Phaser.Game(config);

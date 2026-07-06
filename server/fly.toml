@@ -1,0 +1,32 @@
+app = "prototypemaker-colyseus"
+primary_region = "nrt"
+
+[deploy]
+  strategy = "rolling"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "2567"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 2567
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
