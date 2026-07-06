@@ -33,6 +33,11 @@ export class MenuScene extends Phaser.Scene {
       name: '末班地铁',
       description: '怪物在车厢间穿行留下致命残秽，吸取残秽喂给列车跑到下一站！被怪物碰到即死！',
     },
+    {
+      key: 'PinballScene',
+      name: '弹珠赌局',
+      description: '你是赌徒，被迫用牙齿做的挡板操控弹珠完成致命赌局！黑暗在身后追赶！',
+    },
     // Add new prototypes here
   ];
 
