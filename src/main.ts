@@ -6,6 +6,8 @@ import { EscortScene } from './scenes/EscortScene';
 import { TowerDefenseScene } from './scenes/TowerDefenseScene';
 import { HauntedMansionScene } from './scenes/HauntedMansionScene';
 import { CleanupScene } from './scenes/CleanupScene';
+import { MidnightGambleScene } from './scenes/MidnightGambleScene';
+import { AbyssHotelScene } from './scenes/AbyssHotelScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -18,7 +20,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, MidnightGambleScene, AbyssHotelScene],
 };
 
 new Phaser.Game(config);

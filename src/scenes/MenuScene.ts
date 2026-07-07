@@ -33,6 +33,16 @@ export class MenuScene extends Phaser.Scene {
       name: '末班地铁',
       description: '怪物在车厢间穿行留下致命残秽，吸取残秽喂给列车跑到下一站！被怪物碰到即死！',
     },
+    {
+      key: 'MidnightGambleScene',
+      name: '午夜赌局',
+      description: '搜打撤+赌博：轮盘赌选地点，搜刮资源躲避怪物，建造避难所升级设施！',
+    },
+    {
+      key: 'AbyssHotelScene',
+      name: '深渊旅馆',
+      description: '模拟经营+赌博：倒置塔下坠探索，占领楼层经营客房，赚取收益继续下坠！',
+    },
     // Add new prototypes here
   ];
 
@@ -45,30 +55,30 @@ export class MenuScene extends Phaser.Scene {
 
   create() {
     // Title
-    this.add.text(400, 80, 'Prototype Maker', {
-      fontSize: '48px',
+    this.add.text(400, 50, 'Prototype Maker', {
+      fontSize: '36px',
       color: '#ffffff',
     }).setOrigin(0.5);
 
-    this.add.text(400, 130, '选择一个原型：', {
-      fontSize: '20px',
+    this.add.text(400, 90, '选择一个原型：', {
+      fontSize: '16px',
       color: '#aaaaaa',
     }).setOrigin(0.5);
 
     // Menu items
-    const startY = 200;
-    const itemHeight = 80;
+    const startY = 170;
+    const itemHeight = 60;
 
     this.prototypes.forEach((proto, index) => {
       const y = startY + index * itemHeight;
 
       const nameText = this.add.text(100, y, proto.name, {
-        fontSize: '28px',
+        fontSize: '22px',
         color: '#ffffff',
       });
 
-      const descText = this.add.text(100, y + 35, proto.description, {
-        fontSize: '16px',
+      const descText = this.add.text(100, y + 26, proto.description, {
+        fontSize: '13px',
         color: '#888888',
       });
 
