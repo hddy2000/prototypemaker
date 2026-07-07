@@ -17,5 +17,7 @@ Thumbs.db
 npm-debug.log*
 
 # Environment
-.env
+.env.*
 .env.local
+!.env.production
+!.env.fly

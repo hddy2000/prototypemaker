@@ -1,0 +1,38 @@
+name: Deploy Server to Fly
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - server/**
+      - .github/workflows/fly-deploy.yml
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Verify Fly access
+        working-directory: server
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "FLY_API_TOKEN is missing"
+            exit 1
+          fi
+          echo "FLY_API_TOKEN is present (${#FLY_API_TOKEN} chars)"
+          flyctl auth whoami
+          flyctl status -a prototypemaker-colyseus
+
+      - name: Deploy to Fly
+        working-directory: server
+        run: flyctl deploy --remote-only -a prototypemaker-colyseus

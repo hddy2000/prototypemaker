@@ -40,6 +40,7 @@ interface Obstacle {
 export class MazeScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private escKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private eKey!: Phaser.Input.Keyboard.Key;
@@ -293,6 +294,9 @@ export class MazeScene extends Phaser.Scene {
     this.fogCtx = this.fogCanvas.getContext('2d')!;
 
     // Add the canvas as a Phaser texture
+    if (this.textures.exists(this.fogTextureKey)) {
+      this.textures.remove(this.fogTextureKey);
+    }
     this.textures.addCanvas(this.fogTextureKey, this.fogCanvas);
 
     // Create an image using the canvas texture, fixed to camera
@@ -394,6 +398,7 @@ export class MazeScene extends Phaser.Scene {
 
   private setupInput() {
     this.cursors = this.input.keyboard!.createCursorKeys();
+    this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
@@ -430,7 +435,9 @@ export class MazeScene extends Phaser.Scene {
     // threshold once depleted before sprinting again.
     const wantsSprint = this.shiftKey.isDown && !this.staminaDepleted;
     const isMoving = this.cursors.left.isDown || this.cursors.right.isDown ||
-                     this.cursors.up.isDown || this.cursors.down.isDown;
+                     this.cursors.up.isDown || this.cursors.down.isDown ||
+                     this.wasdKeys.A.isDown || this.wasdKeys.D.isDown ||
+                     this.wasdKeys.W.isDown || this.wasdKeys.S.isDown;
     const isSprinting = wantsSprint && isMoving && this.stamina > 0;
 
     if (isSprinting) {
@@ -459,10 +466,10 @@ export class MazeScene extends Phaser.Scene {
     let vx = 0;
     let vy = 0;
 
-    if (this.cursors.left.isDown) vx -= speed;
-    if (this.cursors.right.isDown) vx += speed;
-    if (this.cursors.up.isDown) vy -= speed;
-    if (this.cursors.down.isDown) vy += speed;
+    if (this.cursors.left.isDown || this.wasdKeys.A.isDown) vx -= speed;
+    if (this.cursors.right.isDown || this.wasdKeys.D.isDown) vx += speed;
+    if (this.cursors.up.isDown || this.wasdKeys.W.isDown) vy -= speed;
+    if (this.cursors.down.isDown || this.wasdKeys.S.isDown) vy += speed;
 
     // Normalize diagonal movement
     if (vx !== 0 && vy !== 0) {
