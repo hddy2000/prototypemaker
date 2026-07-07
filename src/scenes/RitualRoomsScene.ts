@@ -330,6 +330,15 @@ export class RitualRoomsScene extends Phaser.Scene {
       this.hideSpots.push({ x: rx + room.w - 90, y: ry + room.h - 80, w: 70, h: 50, kind: 'table', roomId: i, occupied: false });
     }
 
+    // 祭坛房间（中央）躲藏点：2个柜子放在上侧两角，避开中央祭坛与地雷存放处
+    {
+      const hub = this.rooms[0];
+      // 左上柜子
+      this.hideSpots.push({ x: hub.x + 20, y: hub.y + 20, w: 60, h: 60, kind: 'locker', roomId: 0, occupied: false });
+      // 右上柜子
+      this.hideSpots.push({ x: hub.x + hub.w - 80, y: hub.y + 20, w: 60, h: 60, kind: 'locker', roomId: 0, occupied: false });
+    }
+
     // 残秽初始化
     for (let i = 0; i <= 6; i++) {
       const initPollution = i === 0 ? 0 : Math.max(0, 25 - i * 3);
