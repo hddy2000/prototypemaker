@@ -58,7 +58,26 @@ export class MenuScene extends Phaser.Scene {
       name: '多人互射测试',
       description: '【多人联机】WASD/方向键移动，按空格开枪，死亡无限复活，无时间限制，专门用来联机射击调试。',
     },
-    // Add new prototypes here
+    {
+      key: 'RitualRoomsScene',
+      name: '仪式房间',
+      description: '中央祭坛+周围6房间，吸取残秽喂给祭坛完成仪式！怪物碰触即死，可躲进柜子/桌下！',
+    },
+    {
+      key: 'TrapHunterScene',
+      name: '陷阱猎人',
+      description: '布置陷阱，用噪音器引诱怪物踩中爆炸！杀怪掉灵魂→献祭祭坛→完成仪式。冲刺有噪音会暴露自己，想引诱又怕发声！',
+    },
+    {
+      key: 'NameTagScene',
+      name: '撕名牌大乱斗',
+      description: '【俯视角竞技】WASD移动，空格撕对手背后名牌！冲刺消耗体力，道具护盾/烟雾/磁铁，60秒后缩圈，最后存活者胜！',
+    },
+    {
+      key: 'StealScene',
+      name: '绕背偷',
+      description: '【差异化验证】怪物身上携带残秽，绕到背后盲区按空格偷取！怪物有视野锥，追击比玩家慢但有攻击前摇，偷越多越容易惊动！',
+    },
     // Add new prototypes here
   ];
 

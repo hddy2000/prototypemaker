@@ -32,6 +32,8 @@ export class DeathmatchScene extends Phaser.Scene {
   private obstacles: Phaser.GameObjects.Rectangle[] = [];
   private connectionStatus!: Phaser.GameObjects.Text;
   private playerCountText!: Phaser.GameObjects.Text;
+  private mouseX = 0;
+  private mouseY = 0;
 
   constructor() {
     super({ key: 'DeathmatchScene' });
@@ -308,9 +310,17 @@ export class DeathmatchScene extends Phaser.Scene {
       mySprite.sprite.y = newY;
     }
 
-    if (vx !== 0 || vy !== 0) {
-      mySprite.sprite.rotation = Math.atan2(vy, vx) + Math.PI / 2;
-    }
+    // Update mouse position and calculate aim rotation
+    const pointer = this.input.activePointer;
+    const camera = this.cameras.main;
+    this.mouseX = pointer.x + camera.scrollX;
+    this.mouseY = pointer.y + camera.scrollY;
+
+    // Calculate rotation towards mouse
+    const dx = this.mouseX - mySprite.sprite.x;
+    const dy = this.mouseY - mySprite.sprite.y;
+    const targetRotation = Math.atan2(dx, -dy);
+    mySprite.sprite.rotation = targetRotation;
 
     if (Phaser.Input.Keyboard.JustDown(this.shootKey) && canAct) {
       this.room.send('shoot');
