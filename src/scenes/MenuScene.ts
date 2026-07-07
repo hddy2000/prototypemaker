@@ -59,6 +59,11 @@ export class MenuScene extends Phaser.Scene {
       description: '【多人联机】WASD/方向键移动，按空格开枪，死亡无限复活，无时间限制，专门用来联机射击调试。',
     },
     {
+      key: 'PinballScene',
+      name: '弹珠赌局',
+      description: '你是赌徒，被迫用牙齿做的挡板操控弹珠完成致命赌局！黑暗在身后追赶！',
+    },
+    {
       key: 'RitualRoomsScene',
       name: '仪式房间',
       description: '中央祭坛+周围6房间，吸取残秽喂给祭坛完成仪式！怪物碰触即死，可躲进柜子/桌下！',
