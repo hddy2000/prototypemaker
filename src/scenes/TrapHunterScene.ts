@@ -85,7 +85,7 @@ interface Pulse {
 
 const HUB_W = 280; const HUB_H = 240;
 const ROOM_W = 220; const ROOM_H = 180;
-const CORR_W = 40; const CORR_LEN = 80;
+const CORR_W = 40; // const CORR_LEN = 80;
 const MAP_CX = 750; const MAP_CY = 560;
 
 const PLAYER_SPEED = 210;
@@ -96,8 +96,8 @@ const PLAYER_SIZE = 22;
 const MONSTER_W = 56; const MONSTER_H = 80;
 const MONSTER_SPEED = 215;  // 追击速度：略高于玩家正常速度
 const MONSTER_WANDER_SPEED = PLAYER_SPEED * 0.35;
-const MONSTER_INVESTIGATE_SPEED = PLAYER_SPEED * 0.85;
-const MONSTER_AGGRO_RANGE = 500;
+// const MONSTER_INVESTIGATE_SPEED = PLAYER_SPEED * 0.85;
+// const MONSTER_AGGRO_RANGE = 500;
 const MONSTER_VISION_BASE = 250;  // 大幅增加基础视线：从 100 → 250
 const MONSTER_GIVEUP_TIME = 8000;
 const MONSTER_INVESTIGATE_LINGER = 4000;
@@ -143,7 +143,6 @@ export class TrapHunterScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private escKey!: Phaser.Input.Keyboard.Key;
-  private spaceKey!: Phaser.Input.Keyboard.Key;
   private interactKey!: Phaser.Input.Keyboard.Key;
   private mineKey!: Phaser.Input.Keyboard.Key;
   private shiftKey!: Phaser.Input.Keyboard.Key;
@@ -162,8 +161,6 @@ export class TrapHunterScene extends Phaser.Scene {
   private carrying = 0;
   private isHidden = false;
   private hiddenSpot: HideSpot | null = null;
-  private lastMoveDir = new Phaser.Math.Vector2(0, 1);
-
   // 陷阱
   private mines: Mine[] = [];
   private hasMine = false;
@@ -223,9 +220,7 @@ export class TrapHunterScene extends Phaser.Scene {
     // Reset all state (scene.restart reuses same object)
     this.rooms = []; this.corridors = []; this.hideSpots = []; this.monsters = [];
     this.carrying = 0; this.isHidden = false; this.hiddenSpot = null;
-    this.lastMoveDir = new Phaser.Math.Vector2(0, 1);
     this.mines = []; this.hasMine = false; this.minesRemaining = MINE_TOTAL;
-    this.noiseMakers = []; this.hasNoiseMaker = false; this.noiseMakersRemaining = NOISEMAKER_TOTAL;
     this.pulses = []; this.souls = [];
     this.noiseLevel = 0;
     this.ritualProgress = 0;
@@ -416,7 +411,6 @@ export class TrapHunterScene extends Phaser.Scene {
       D: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.mineKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.shiftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
@@ -631,7 +625,6 @@ export class TrapHunterScene extends Phaser.Scene {
     if (vx !== 0 || vy !== 0) {
       const len = Math.sqrt(vx * vx + vy * vy);
       vx = (vx / len) * speed; vy = (vy / len) * speed;
-      this.lastMoveDir = new Phaser.Math.Vector2(vx, vy).normalize();
     }
 
     // 移动产生噪音
@@ -664,7 +657,7 @@ export class TrapHunterScene extends Phaser.Scene {
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  private handleActions(delta: number) {
+  private handleActions(_delta: number) {
     if (Phaser.Input.Keyboard.JustDown(this.interactKey)) this.tryInteract();
     if (Phaser.Input.Keyboard.JustDown(this.mineKey)) this.placeMine();
   }
@@ -825,10 +818,6 @@ export class TrapHunterScene extends Phaser.Scene {
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < 30) return; // 太近不投
     const nx = dx / dist; const ny = dy / dist;
-    const throwDist = Math.min(dist, 400); // 最大投掷距离
-    const targetX = this.player.x + nx * throwDist;
-    const targetY = this.player.y + ny * throwDist;
-
     const container = this.add.container(this.player.x, this.player.y);
     container.setDepth(7);
     const bell = this.add.circle(0, 0, 8, 0x66aaff, 1);

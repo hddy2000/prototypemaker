@@ -69,7 +69,7 @@ export class AbyssHotelScene extends Phaser.Scene {
   private maxFloorReached = 1;
   private elevatorDecisionTimer = 0;
   private elevatorDecisionLimit = 10000; // 10 seconds to decide
-  private stayOrDescend = '';
+  // private stayOrDescend = ''; // reserved for future use
   
   // Floors
   private floors: Map<number, Floor> = new Map();
@@ -365,12 +365,12 @@ export class AbyssHotelScene extends Phaser.Scene {
     this.mapGraphics.fillRect(0, 0, this.mapWidth, this.mapHeight);
     
     // Floor number
-    const typeColors: { [key: string]: number } = {
-      'safe': 0x44ff44,
-      'monster': 0xffaa00,
-      'trap': 0xff4444,
-      'event': 0xaa44ff
-    };
+    // const typeColors: { [key: string]: number } = {
+    //   'safe': 0x44ff44,
+    //   'monster': 0xffaa00,
+    //   'trap': 0xff4444,
+    //   'event': 0xaa44ff
+    // };
     
     this.add.text(400, 30, `${this.currentFloor}F`, {
       fontSize: '28px',

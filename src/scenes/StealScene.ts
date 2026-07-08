@@ -65,7 +65,7 @@ const HUB_H = 240;
 const ROOM_W = 220;
 const ROOM_H = 180;
 const CORR_W = 40;
-const CORR_LEN = 80;
+// const CORR_LEN = 80;
 const MAP_CX = 750;
 const MAP_CY = 560;
 
@@ -97,10 +97,10 @@ const STEAL_RATE = 0.05;           // 每ms偷取量（约 50/秒）
 const STEAL_STARTLE_BASE = 0.02;   // 每次偷取基础惊动概率
 const CARRY_CAPACITY = 10;
 const RITUAL_TOTAL = 200;          // 仪式总进度（偷 7 只怪左右）
-const FUEL_DRAIN_RATE = 0;         // 本原型不设燃料压力，专注偷取体验
+// const FUEL_DRAIN_RATE = 0;         // 本原型不设燃料压力，专注偷取体验
 
 // 地雷（保留作为工具）
-const MINE_TOTAL = 99;
+// const MINE_TOTAL = 99;
 const MINE_PICKUP_RANGE = 35;
 const MINE_RADIUS = 120;
 const MINE_ARM_TIME = 800;
@@ -132,7 +132,6 @@ export class StealScene extends Phaser.Scene {
 
   private mines: any[] = [];
   private hasMine = false;
-  private minesRemaining = MINE_TOTAL;
   private minePickup!: Phaser.GameObjects.Container;
 
   private depositZone!: Phaser.GameObjects.Container;
@@ -164,7 +163,7 @@ export class StealScene extends Phaser.Scene {
     this.rooms = []; this.corridors = []; this.hideSpots = []; this.monsters = [];
     this.carrying = 0; this.isHidden = false; this.hiddenSpot = null;
     this.stealTarget = null; this.mines = []; this.hasMine = false;
-    this.minesRemaining = MINE_TOTAL; this.ritualProgress = 0;
+    this.ritualProgress = 0;
     this.isDead = false; this.isWon = false;
 
     this.buildRooms();

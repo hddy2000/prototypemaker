@@ -69,7 +69,7 @@ const HUB_H = 240;
 const ROOM_W = 220;
 const ROOM_H = 180;
 const CORR_W = 40;       // 走廊宽度
-const CORR_LEN = 80;     // 走廊长度
+// const CORR_LEN = 80;     // 走廊长度
 
 // 地图中心
 const MAP_CX = 750;
@@ -112,7 +112,7 @@ const FUEL_DRAIN_RATE = 1.5;
 const STALL_DEATH_TIME = 35000;
 
 // 地雷
-const MINE_TOTAL = 5;                  // 祭坛旁库存地雷数
+// const MINE_TOTAL = 5;                  // 祭坛旁库存地雷数
 const MINE_PICKUP_RANGE = 35;
 const MINE_RADIUS = 120;               // 爆炸半径
 const MINE_ARM_TIME = 800;             // 放置后武装时间(ms)，期间不触发
@@ -155,7 +155,6 @@ export class RitualRoomsScene extends Phaser.Scene {
   // 地雷
   private mines: Mine[] = [];
   private hasMine = false;
-  private minesRemaining = MINE_TOTAL;
   private minePickup!: Phaser.GameObjects.Container;
 
   // 祭坛（中央）
@@ -209,7 +208,6 @@ export class RitualRoomsScene extends Phaser.Scene {
     this.hiddenSpot = null;
     this.mines = [];
     this.hasMine = false;
-    this.minesRemaining = MINE_TOTAL;
     this.fuel = FUEL_MAX;
     this.ritualProgress = 0;
     this.stallTimer = 0;

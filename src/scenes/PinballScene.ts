@@ -260,7 +260,7 @@ export class PinballScene extends Phaser.Scene {
     }
   }
 
-  private hitBumper(bumper: Phaser.GameObjects.Arc, pupil: Phaser.GameObjects.Circle) {
+  private hitBumper(bumper: Phaser.GameObjects.Arc, pupil: Phaser.GameObjects.Arc) {
     // 得分
     this.score += BUMPER_SCORE;
 
@@ -339,7 +339,6 @@ export class PinballScene extends Phaser.Scene {
 
       // 物理体
       this.physics.add.existing(grotesque, true);
-      const body = grotesque.body as Phaser.Physics.Arcade.Body;
 
       // 重叠检测（减速+掉SAN）
       this.physics.add.overlap(this.ball, grotesque, () => {
@@ -532,7 +531,7 @@ export class PinballScene extends Phaser.Scene {
     }
   }
 
-  private updateBall(dt: number) {
+  private updateBall(_dt: number) {
     if (this.isFixed) return;
 
     // 检查是否到达固定点
@@ -612,7 +611,7 @@ export class PinballScene extends Phaser.Scene {
       
       // 画面扭曲（用tint模拟）
       if (sanRatio < 0.3) {
-        this.cameras.main.setRoll(Phaser.Math.Between(-2, 2));
+        (this.cameras.main as any).setRoll(Phaser.Math.Between(-2, 2));
       }
     }
   }

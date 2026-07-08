@@ -52,7 +52,7 @@ const NAMETAG_W = 30;
 const NAMETAG_H = 20;
 const TEAR_RANGE = 48;         // 撕名牌判定距离
 const TEAR_ANGLE = Math.PI / 2.6; // 背后扇形角度
-const INVINCIBLE_TIME = 2500;
+// const INVINCIBLE_TIME = 2500; // reserved for future use
 const ITEM_SPAWN_INTERVAL = 8000;
 
 const FIGHTER_COLORS = [0x4488ff, 0xff4444, 0x44dd44, 0xffaa22, 0xbb44ff, 0x22dddd];
@@ -218,7 +218,7 @@ export class NameTagScene extends Phaser.Scene {
       // 朝向指示（前方小三角）
       const dirIndicator = this.add.triangle(
         0, -BODY_RADIUS - 4,
-        { x: -6, y: 0 }, { x: 6, y: 0 }, { x: 0, y: -8 },
+        -6, 0, 6, 0, 0, -8,
         color,
       );
 
@@ -448,13 +448,14 @@ export class NameTagScene extends Phaser.Scene {
     // 找最近的活着的对手
     let nearest: Fighter | null = null;
     let nearestDist = Infinity;
-    this.fighters.forEach((other, i) => {
-      if (i === index || !other.alive) return;
+    for (let i = 0; i < this.fighters.length; i++) {
+      if (i === index || !this.fighters[i].alive) continue;
+      const other = this.fighters[i];
       const dx = other.sprite.x - f.sprite.x;
       const dy = other.sprite.y - f.sprite.y;
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d < nearestDist) { nearestDist = d; nearest = other; }
-    });
+    }
 
     // 无敌时逃跑
     if (f.invincibleTimer > 0) {
@@ -539,8 +540,6 @@ export class NameTagScene extends Phaser.Scene {
   // ── 通用更新 ─────────────────────────────────────────────────────────────
 
   private updateFighterCommon(f: Fighter, _index: number, delta: number) {
-    const dt = delta / 1000;
-
     // 无敌时间
     if (f.invincibleTimer > 0) {
       f.invincibleTimer -= delta;
