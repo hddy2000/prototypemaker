@@ -45,8 +45,14 @@ const MATERIAL_ORDER: MaterialType[] = ['iron', 'crystal', 'wood', 'stone', 'cor
 
 export class EscortScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle;
-  private itemA!: Phaser.GameObjects.Container; // 物品A跟随玩家
-  private itemASprite!: Phaser.GameObjects.Rectangle;
+  private ball!: Phaser.GameObjects.Image; // 足球——玩家可推动/滚动
+  private ballRadius = 14;
+  private ballVx = 0;
+  private ballVy = 0;
+  private ballFriction = 0.985; // 每帧速度衰减
+  private ballMaxSpeed = 600;
+  private ballPushForce = 320; // 玩家碰撞时赋予的速度
+  private ballRotation: { angle: number } = { angle: 0 }; // 用于旋转动画
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private escKey!: Phaser.Input.Keyboard.Key;
@@ -79,6 +85,8 @@ export class EscortScene extends Phaser.Scene {
   private health = 100;
   private collectedMaterials = new Set<MaterialType>();
   private damageCooldown = 0;
+  private playerVx = 0; // 上一帧玩家速度，用于推动足球
+  private playerVy = 0;
 
   // Stamina (加速跑)
   private stamina = 100;
@@ -102,13 +110,31 @@ export class EscortScene extends Phaser.Scene {
   }
 
   create() {
+    // ── 重置所有实例状态（scene.start() 复用同一对象）──
+    this.isDead = false;
+    this.isWon = false;
+    this.health = 100;
+    this.damageCooldown = 0;
+    this.collectedMaterials.clear();
+    this.materials = [];
+    this.monsters = [];
+    this.obstacles = [];
+    this.stamina = 100;
+    this.isSprinting = false;
+    this.staminaRegenDelay = 0;
+    this.playerVx = 0;
+    this.playerVy = 0;
+    this.ballVx = 0;
+    this.ballVy = 0;
+    this.ballRotation.angle = 0;
+
     this.cam = this.cameras.main;
     this.cam.setBounds(0, 0, this.mapWidth, this.mapHeight);
 
     this.generateObstacles();
     this.drawMap();
     this.createPlayer();
-    this.createItemA();
+    this.createBall();
     this.createMaterials();
     this.createMonsters();
     this.createExit();
@@ -118,7 +144,7 @@ export class EscortScene extends Phaser.Scene {
 
     this.cam.startFollow(this.player, true, 0.1, 0.1);
 
-    this.showMessage('护送物品A到终点！\n收集5种材料升级后才能通关');
+    this.showMessage('把足球滚到材料上拾取！\n收集5种材料升级后滚到终点通关');
     this.time.delayedCall(3000, () => this.hideMessage());
   }
 
@@ -180,33 +206,162 @@ export class EscortScene extends Phaser.Scene {
     this.player.setDepth(5);
   }
 
-  private createItemA() {
-    // 物品A跟随玩家，显示在角色右上方
-    this.itemASprite = this.add.rectangle(0, 0, 16, 16, 0xffdd00);
-    this.itemASprite.setStrokeStyle(2, 0xffffff);
-    this.itemA = this.add.container(this.player.x + 18, this.player.y - 18, [this.itemASprite]);
-    this.itemA.setDepth(6);
+  private createBall() {
+    // 生成足球纹理（程序化绘制）
+    if (!this.textures.exists('escortBall')) {
+      const size = 64;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d')!;
+      const cx = size / 2;
+      const cy = size / 2;
+      const r = size / 2 - 2;
+
+      // 白色底
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 黑色五边形花纹（简化版足球）
+      ctx.fillStyle = '#222222';
+      const drawPentagon = (px: number, py: number, pr: number, rot: number) => {
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const a = rot + (i / 5) * Math.PI * 2 - Math.PI / 2;
+          const x = px + Math.cos(a) * pr;
+          const y = py + Math.sin(a) * pr;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      // 中心五边形
+      drawPentagon(cx, cy, r * 0.32, 0);
+      // 周围5个
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const px = cx + Math.cos(a) * r * 0.62;
+        const py = cy + Math.sin(a) * r * 0.62;
+        drawPentagon(px, py, r * 0.22, a + Math.PI);
+      }
+
+      // 边框
+      ctx.strokeStyle = '#444444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      this.textures.addCanvas('escortBall', canvas);
+    }
+
+    // 足球放在玩家前方
+    this.ball = this.add.image(this.player.x + 40, this.player.y, 'escortBall');
+    const count = this.collectedMaterials.size;
+    const scale = (this.ballRadius * 2) / 64 * (1 + count * 0.08);
+    this.ball.setScale(scale);
+    this.ball.setDepth(6);
   }
 
-  private updateItemA() {
-    // 平滑跟随玩家
-    const targetX = this.player.x + 18;
-    const targetY = this.player.y - 18;
-    this.itemA.x += (targetX - this.itemA.x) * 0.2;
-    this.itemA.y += (targetY - this.itemA.y) * 0.2;
+  private updateBall(delta: number) {
+    const dt = delta / 1000;
 
-    // 根据已收集材料数量改变外观
+    // 玩家与足球碰撞 → 推动足球
+    const dx = this.ball.x - this.player.x;
+    const dy = this.ball.y - this.player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const playerHalf = 12;
+    const minDist = playerHalf + this.ballRadius;
+
+    if (dist < minDist && dist > 0.01) {
+      // 法线方向
+      const nx = dx / dist;
+      const ny = dy / dist;
+
+      // 把球推到接触面之外（检查目标位置不在墙内）
+      const targetX = this.player.x + nx * minDist;
+      const targetY = this.player.y + ny * minDist;
+      if (!this.circleCollidesObstacle(targetX, targetY, this.ballRadius)) {
+        this.ball.x = targetX;
+        this.ball.y = targetY;
+      }
+
+      // 玩家朝球方向的速度分量赋予球
+      const pSpeed = Math.sqrt(this.playerVx * this.playerVx + this.playerVy * this.playerVy);
+      if (pSpeed > 1) {
+        const dot = this.playerVx * nx + this.playerVy * ny;
+        if (dot > 0) {
+          // 玩家正朝球方向移动 → 推球
+          this.ballVx += nx * this.ballPushForce * dt * 60 * 0.5;
+          this.ballVy += ny * this.ballPushForce * dt * 60 * 0.5;
+        }
+      }
+    }
+
+    // 摩擦衰减
+    const friction = Math.pow(this.ballFriction, delta / 16.67);
+    this.ballVx *= friction;
+    this.ballVy *= friction;
+
+    // 限速
+    const speed = Math.sqrt(this.ballVx * this.ballVx + this.ballVy * this.ballVy);
+    if (speed > this.ballMaxSpeed) {
+      this.ballVx = (this.ballVx / speed) * this.ballMaxSpeed;
+      this.ballVy = (this.ballVy / speed) * this.ballMaxSpeed;
+    }
+
+    // 微速度归零
+    if (Math.abs(this.ballVx) < 0.5) this.ballVx = 0;
+    if (Math.abs(this.ballVy) < 0.5) this.ballVy = 0;
+
+    // 移动 + 障碍物碰撞（精确圆检测，分轴滑动）
+    const newX = this.ball.x + this.ballVx * dt;
+    if (!this.circleCollidesObstacle(newX, this.ball.y, this.ballRadius)) {
+      this.ball.x = newX;
+    } else {
+      this.ballVx *= -0.4; // 反弹
+    }
+
+    const newY = this.ball.y + this.ballVy * dt;
+    if (!this.circleCollidesObstacle(this.ball.x, newY, this.ballRadius)) {
+      this.ball.y = newY;
+    } else {
+      this.ballVy *= -0.4; // 反弹
+    }
+
+    // 边界
+    this.ball.x = Phaser.Math.Clamp(this.ball.x, this.ballRadius + 20, this.mapWidth - this.ballRadius - 20);
+    this.ball.y = Phaser.Math.Clamp(this.ball.y, this.ballRadius + 20, this.mapHeight - this.ballRadius - 20);
+
+    // 兜底：如果球仍卡在墙里，强制推出
+    this.pushBallOutOfWalls();
+
+    // 旋转动画（根据滚动方向）
+    const rollSpeed = Math.sqrt(this.ballVx * this.ballVx + this.ballVy * this.ballVy);
+    if (rollSpeed > 1) {
+      const rotDir = this.ballVx >= 0 ? 1 : -1;
+      this.ballRotation.angle += rotDir * rollSpeed * dt * 0.08;
+      this.ball.setRotation(this.ballRotation.angle);
+    }
+
+    // 根据已收集材料数量改变大小
     const count = this.collectedMaterials.size;
-    const size = 16 + count * 4;
-    this.itemASprite.setSize(size, size);
+    const scale = (this.ballRadius * 2) / 64 * (1 + count * 0.08);
+    this.ball.setScale(scale);
 
+    // 集齐后彩虹色调
     if (count >= 5) {
-      // 集齐后彩虹脉冲
       const hue = (this.time.now / 10) % 360;
       const color = Phaser.Display.Color.HSVToRGB(hue / 360, 1, 1).color;
-      this.itemASprite.setFillStyle(color);
+      this.ball.setTint(color);
     } else if (count > 0) {
-      this.itemASprite.setFillStyle(0xffaa00);
+      this.ball.setTint(0xffcc88);
+    } else {
+      this.ball.clearTint();
     }
   }
 
@@ -388,7 +543,7 @@ export class EscortScene extends Phaser.Scene {
       color: '#ffffff',
     }).setScrollFactor(0).setDepth(20);
 
-    this.itemStatusText = this.add.text(16, 70, '物品A: 基础形态 (0/5)', {
+    this.itemStatusText = this.add.text(16, 70, '足球: 基础形态 (0/5)', {
       fontSize: '16px',
       color: '#ffdd00',
     }).setScrollFactor(0).setDepth(20);
@@ -448,10 +603,10 @@ export class EscortScene extends Phaser.Scene {
 
     const count = this.collectedMaterials.size;
     if (count >= 5) {
-      this.itemStatusText.setText('物品A: 完全体! (5/5) 🌈');
+      this.itemStatusText.setText('足球: 完全体! (5/5) 🌈');
       this.itemStatusText.setColor('#ff00ff');
     } else {
-      this.itemStatusText.setText(`物品A: 升级中 (${count}/5)`);
+      this.itemStatusText.setText(`足球: 升级中 (${count}/5)`);
       this.itemStatusText.setColor('#ffdd00');
     }
   }
@@ -477,7 +632,7 @@ export class EscortScene extends Phaser.Scene {
 
     this.handlePlayerMovement(delta);
     this.updateStamina(delta);
-    this.updateItemA();
+    this.updateBall(delta);
     this.updateMonsters(delta);
     this.checkMaterialPickup();
     this.checkMonsterCollision();
@@ -539,6 +694,8 @@ export class EscortScene extends Phaser.Scene {
     }
 
     const halfSize = 11;
+    let actualVx = 0;
+    let actualVy = 0;
 
     if (vx !== 0) {
       const dx = vx * dt;
@@ -547,6 +704,7 @@ export class EscortScene extends Phaser.Scene {
       if (!this.isObstacleAt(edgeX, this.player.y - halfSize, halfSize) &&
           !this.isObstacleAt(edgeX, this.player.y + halfSize, halfSize)) {
         this.player.x = newX;
+        actualVx = vx;
       }
     }
 
@@ -557,8 +715,13 @@ export class EscortScene extends Phaser.Scene {
       if (!this.isObstacleAt(this.player.x - halfSize, edgeY, halfSize) &&
           !this.isObstacleAt(this.player.x + halfSize, edgeY, halfSize)) {
         this.player.y = newY;
+        actualVy = vy;
       }
     }
+
+    // 记录实际速度供推动足球使用
+    this.playerVx = actualVx;
+    this.playerVy = actualVy;
   }
 
   // ─── Collision helpers ────────────────────────────────────────
@@ -580,6 +743,37 @@ export class EscortScene extends Phaser.Scene {
       if (dist < radius) return true;
     }
     return false;
+  }
+
+  // 圆与所有障碍物的碰撞检测（精确）
+  private circleCollidesObstacle(x: number, y: number, radius: number): boolean {
+    for (const obs of this.obstacles) {
+      const closestX = Phaser.Math.Clamp(x, obs.x, obs.x + obs.w);
+      const closestY = Phaser.Math.Clamp(y, obs.y, obs.y + obs.h);
+      const dx = x - closestX;
+      const dy = y - closestY;
+      if (dx * dx + dy * dy < radius * radius) return true;
+    }
+    return false;
+  }
+
+  // 如果球卡在墙里，沿最短路径推出到自由位置
+  private pushBallOutOfWalls() {
+    if (!this.circleCollidesObstacle(this.ball.x, this.ball.y, this.ballRadius)) return;
+
+    // 搜索最近的自由位置（螺旋向外）
+    const maxSearch = 200;
+    for (let r = 4; r <= maxSearch; r += 4) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+        const tx = this.ball.x + Math.cos(a) * r;
+        const ty = this.ball.y + Math.sin(a) * r;
+        if (!this.circleCollidesObstacle(tx, ty, this.ballRadius)) {
+          this.ball.x = tx;
+          this.ball.y = ty;
+          return;
+        }
+      }
+    }
   }
 
   private lineBlockedByObstacle(x1: number, y1: number, x2: number, y2: number): boolean {
@@ -708,8 +902,9 @@ export class EscortScene extends Phaser.Scene {
     for (const mat of this.materials) {
       if (mat.collected) continue;
 
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, mat.x, mat.y);
-      if (dist < 30) {
+      // 拾取改为：足球滚到材料位置碰撞拾取（而非主角跑过去拾取）
+      const dist = Phaser.Math.Distance.Between(this.ball.x, this.ball.y, mat.x, mat.y);
+      if (dist < this.ballRadius + 16) {
         mat.collected = true;
         mat.sprite.setVisible(false);
         this.tweens.killTweensOf(mat.sprite);
@@ -720,7 +915,7 @@ export class EscortScene extends Phaser.Scene {
         this.updateMaterialsUI();
 
         if (count >= 5) {
-          this.showMessage(`收集到 ${info.name}！\n物品A进化为完全体！\n前往终点通关！`);
+          this.showMessage(`收集到 ${info.name}！\n足球进化为完全体！\n前往终点通关！`);
         } else {
           this.showMessage(`收集到 ${info.name}！\n(${count}/5)`);
         }
@@ -767,17 +962,18 @@ export class EscortScene extends Phaser.Scene {
   // ─── Exit check ───────────────────────────────────────────────
 
   private checkExit() {
+    // 检查足球是否到达终点
     const dist = Phaser.Math.Distance.Between(
-      this.player.x, this.player.y,
+      this.ball.x, this.ball.y,
       this.exit.x, this.exit.y
     );
 
-    if (dist < 40) {
+    if (dist < 45) {
       if (this.collectedMaterials.size >= 5) {
         this.win();
       } else {
         const remaining = 5 - this.collectedMaterials.size;
-        this.showMessage(`物品A未完全升级！\n还需收集 ${remaining} 种材料`);
+        this.showMessage(`足球未完全升级！\n还需收集 ${remaining} 种材料`);
         this.time.delayedCall(1500, () => this.hideMessage());
       }
     }
@@ -788,14 +984,14 @@ export class EscortScene extends Phaser.Scene {
   private die() {
     this.isDead = true;
     this.player.setFillStyle(0x666666);
-    this.itemA.setVisible(false);
-    this.showMessage('你死了！\n物品A丢失...\n\n按ESC返回菜单');
+    this.ball.setVisible(false);
+    this.showMessage('你死了！\n足球丢失...\n\n按ESC返回菜单');
   }
 
   private win() {
     this.isWon = true;
     this.exit.setFillStyle(0x00ff00);
-    this.showMessage(`🎉 通关！\n物品A成功送达终点！\n\n按ESC返回菜单`);
+    this.showMessage(`🎉 通关！\n足球成功滚到终点！\n\n按ESC返回菜单`);
   }
 
   // ─── Message ──────────────────────────────────────────────────

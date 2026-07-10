@@ -18,6 +18,7 @@ import { NameTagScene } from './scenes/NameTagScene';
 import { StealScene } from './scenes/StealScene';
 import { MidnightGambleScene } from './scenes/MidnightGambleScene';
 import { AbyssHotelScene } from './scenes/AbyssHotelScene';
+import { CleanupEvacScene } from './scenes/CleanupEvacScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -26,6 +27,8 @@ const config: Phaser.Types.Core.GameConfig = {
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: 800,
+    height: 600,
   },
   physics: {
     default: 'arcade',
@@ -34,7 +37,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene, RitualRoomsScene, TrapHunterScene, NameTagScene, StealScene, MidnightGambleScene, AbyssHotelScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene, RitualRoomsScene, TrapHunterScene, NameTagScene, StealScene, MidnightGambleScene, AbyssHotelScene, CleanupEvacScene],
 };
 
 (window as any).game = new Phaser.Game(config);

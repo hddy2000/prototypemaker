@@ -16,7 +16,7 @@ export class MenuScene extends Phaser.Scene {
     {
       key: 'EscortScene',
       name: '护送升级',
-      description: '收集5种材料升级物品A，护送到终点通关！',
+      description: '收集5种材料升级足球，把足球推滚到终点通关！',
     },
     {
       key: 'TowerDefenseScene',
@@ -92,6 +92,11 @@ export class MenuScene extends Phaser.Scene {
       key: 'AbyssHotelScene',
       name: '深渊旅馆',
       description: '模拟经营+赌博：倒置塔下坠探索，占领楼层经营客房，赚取收益继续下坠！',
+    },
+    {
+      key: 'CleanupEvacScene',
+      name: '清扫撤离',
+      description: '进入黑暗废弃建筑，用水枪清扫污渍！清扫后随机掉落宝物或触发怪物，收集价值1000后到撤离点撤离！',
     },
     // Add new prototypes here
   ];
