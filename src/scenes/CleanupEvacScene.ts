@@ -35,6 +35,7 @@ interface Monster {
   isHunter: boolean;
   stunTimer: number; // 被水枪喷射时的眩晕计时
   attackCooldown: number; // 攻击后的停顿计时
+  returnHomeTimer: number; // 失去目标后强制回家的计时
   lastSeenX: number; // 最后看到玩家的位置
   lastSeenY: number;
   hasLastSeen: boolean; // 是否有最后已知位置
@@ -517,6 +518,7 @@ export class CleanupEvacScene extends Phaser.Scene {
           isHunter,
           stunTimer: 0,
           attackCooldown: 0,
+          returnHomeTimer: 0,
           lastSeenX: 0,
           lastSeenY: 0,
           hasLastSeen: false,
@@ -872,10 +874,12 @@ export class CleanupEvacScene extends Phaser.Scene {
     this.player.setFillStyle(0x226688);
     this.player.setAlpha(0.5);
     // 躲藏后立即清除所有怪物的追击状态，防止追进房间
+    // 并强制怪物回家，不要蹲在躲藏点门口
     for (const m of this.monsters) {
       m.isChasing = false;
       m.hasLastSeen = false;
       m.searchingTimer = 0;
+      m.returnHomeTimer = 5000; // 强制回家5秒
     }
     this.showMessage('躲藏中！怪物无法发现你。\n再按 E 离开');
     this.time.delayedCall(2500, () => this.hideMessage());
@@ -1179,6 +1183,7 @@ export class CleanupEvacScene extends Phaser.Scene {
             isHunter,
             stunTimer: 0,
             attackCooldown: 0,
+            returnHomeTimer: 0,
             lastSeenX: x,
             lastSeenY: y,
             hasLastSeen: true,
@@ -1326,11 +1331,18 @@ export class CleanupEvacScene extends Phaser.Scene {
           monster.direction.set(Math.cos(angle), Math.sin(angle));
         }
 
+        // 失去目标后强制回家一段时间，不要蹲在躲藏点门口
+        let returnHome = false;
+        if (monster.returnHomeTimer > 0) {
+          monster.returnHomeTimer -= delta;
+          returnHome = true;
+        }
+
         // 巡逻时回到出生点附近
         const distFromHome = Phaser.Math.Distance.Between(
           monster.sprite.x, monster.sprite.y, monster.homeX, monster.homeY
         );
-        if (distFromHome > 400) {
+        if (returnHome || distFromHome > 400) {
           const toHome = new Phaser.Math.Vector2(
             monster.homeX - monster.sprite.x, monster.homeY - monster.sprite.y
           ).normalize();
