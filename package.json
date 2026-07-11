@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "colyseus.js": "^0.15.0",
+    "colyseus.js": "^0.15.28",
     "phaser": "^3.87.0"
   },
   "devDependencies": {
