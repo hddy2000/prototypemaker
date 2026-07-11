@@ -108,6 +108,23 @@ export class AbyssHotelScene extends Phaser.Scene {
   private mapWidth = 800;
   private mapHeight = 600;
   
+  // Room system (like HauntedMansion)
+  private floorRooms: Array<{ x: number; y: number; w: number; h: number; name: string; centerX: number; centerY: number; hasLight: boolean; lightOn: boolean; switchX: number; switchY: number }> = [];
+  private obstacles: Array<{ x: number; y: number; w: number; h: number }> = [];
+  private roomLightOverlays: Phaser.GameObjects.Graphics[] = [];
+  private roomNameTexts: Phaser.GameObjects.Text[] = [];
+  
+  // Fog of war (cone vision like HauntedMansion)
+  private fogImage!: Phaser.GameObjects.Image;
+  private fogCanvas!: HTMLCanvasElement;
+  private fogCtx!: CanvasRenderingContext2D;
+  private fogTextureKey = 'hotelFog';
+  private viewRadius = 180;
+  private screenW = 800;
+  private screenH = 600;
+  private cam!: Phaser.Cameras.Scene2D.Camera;
+  private playerFacingAngle = 0;
+  
   // Room definitions
   private roomDefs: Map<string, RoomDef> = new Map([
     ['guest_room', { name: '客房', cost: 15, income: 3, color: 0x4488ff }],
@@ -121,7 +138,274 @@ export class AbyssHotelScene extends Phaser.Scene {
     super({ key: 'AbyssHotelScene' });
   }
 
+  // Generate room layout (2x2 grid like HauntedMansion)
+  private generateFloorRooms() {
+    this.floorRooms = [];
+    this.obstacles = [];
+    
+    const cols = 2;
+    const rows = 2;
+    const roomGap = 40;
+    const border = 20;
+    const usableW = this.mapWidth - border * 2;
+    const usableH = this.mapHeight - border * 2;
+    const roomW = Math.floor((usableW - roomGap * (cols - 1)) / cols);
+    const roomH = Math.floor((usableH - roomGap * (rows - 1)) / rows);
+    
+    const roomNames = ['大厅', '储藏室', '走廊', '密室'];
+    
+    let idx = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = border + c * (roomW + roomGap);
+        const y = border + r * (roomH + roomGap);
+        const hasLight = Math.random() < 0.5;
+        
+        this.floorRooms.push({
+          x, y, w: roomW, h: roomH,
+          name: roomNames[idx],
+          centerX: x + roomW / 2,
+          centerY: y + roomH / 2,
+          hasLight,
+          lightOn: hasLight,
+          switchX: x + roomW - 40,
+          switchY: y + 40,
+        });
+        idx++;
+      }
+    }
+    
+    // Border walls
+    this.obstacles.push({ x: 0, y: 0, w: this.mapWidth, h: border });
+    this.obstacles.push({ x: 0, y: this.mapHeight - border, w: this.mapWidth, h: border });
+    this.obstacles.push({ x: 0, y: 0, w: border, h: this.mapHeight });
+    this.obstacles.push({ x: this.mapWidth - border, y: 0, w: border, h: this.mapHeight });
+    
+    // Room walls with doorways
+    const doorWidth = 60;
+    for (const room of this.floorRooms) {
+      // Top wall
+      if (room.y > border) {
+        const doorX = room.x + room.w / 2 - doorWidth / 2;
+        this.obstacles.push({ x: room.x, y: room.y - roomGap, w: doorX - room.x, h: roomGap });
+        this.obstacles.push({ x: doorX + doorWidth, y: room.y - roomGap, w: room.x + room.w - (doorX + doorWidth), h: roomGap });
+      }
+      // Left wall
+      if (room.x > border) {
+        const doorY = room.y + room.h / 2 - doorWidth / 2;
+        this.obstacles.push({ x: room.x - roomGap, y: room.y, w: roomGap, h: doorY - room.y });
+        this.obstacles.push({ x: room.x - roomGap, y: doorY + doorWidth, w: roomGap, h: room.y + room.h - (doorY + doorWidth) });
+      }
+      // Bottom wall
+      const isBottomRow = room.y + room.h >= this.mapHeight - border;
+      if (!isBottomRow) {
+        const doorX = room.x + room.w / 2 - doorWidth / 2;
+        this.obstacles.push({ x: room.x, y: room.y + room.h, w: doorX - room.x, h: roomGap });
+        this.obstacles.push({ x: doorX + doorWidth, y: room.y + room.h, w: room.x + room.w - (doorX + doorWidth), h: roomGap });
+      }
+      // Right wall
+      const isRightmost = room.x + room.w >= this.mapWidth - border;
+      if (!isRightmost) {
+        const doorY = room.y + room.h / 2 - doorWidth / 2;
+        this.obstacles.push({ x: room.x + room.w, y: room.y, w: roomGap, h: doorY - room.y });
+        this.obstacles.push({ x: room.x + room.w, y: doorY + doorWidth, w: roomGap, h: room.y + room.h - (doorY + doorWidth) });
+      }
+    }
+  }
+
+  // Draw rooms with walls, doors, and light switches
+  private drawFloorRooms() {
+    // Room floors
+    const shades = [0x1e1e3a, 0x222238, 0x1a2a2e, 0x2a1e2e];
+    this.floorRooms.forEach((room, i) => {
+      this.mapGraphics.fillStyle(shades[i % shades.length], 1);
+      this.mapGraphics.fillRect(room.x, room.y, room.w, room.h);
+      
+      // Room name
+      const roomLabel = this.add.text(room.centerX, room.y + 20, room.name, {
+        fontSize: '18px',
+        color: '#555577',
+      }).setOrigin(0.5).setDepth(1);
+      this.roomNameTexts.push(roomLabel);
+      
+      // Light switch
+      const switchColor = room.lightOn ? 0xffff00 : 0x888888;
+      this.mapGraphics.fillStyle(switchColor, 0.8);
+      this.mapGraphics.fillRect(room.switchX - 8, room.switchY - 8, 16, 16);
+      this.mapGraphics.lineStyle(2, 0xffffff, 0.6);
+      this.mapGraphics.strokeRect(room.switchX - 8, room.switchY - 8, 16, 16);
+      
+      // Dark overlay if light is off
+      if (!room.lightOn) {
+        const overlay = this.add.graphics();
+        overlay.fillStyle(0x000000, 0.7);
+        overlay.fillRect(room.x, room.y, room.w, room.h);
+        overlay.setDepth(2);
+        this.roomLightOverlays.push(overlay);
+      }
+    });
+    
+    // Walls
+    this.mapGraphics.fillStyle(0x444466, 1);
+    for (const obs of this.obstacles) {
+      this.mapGraphics.fillRect(obs.x, obs.y, obs.w, obs.h);
+    }
+    
+    // Wall outlines
+    this.mapGraphics.lineStyle(2, 0x666688, 1);
+    for (const room of this.floorRooms) {
+      this.mapGraphics.strokeRect(room.x, room.y, room.w, room.h);
+    }
+  }
+
+  // Create fog of war canvas
+  private createFloorFog() {
+    this.fogCanvas = document.createElement('canvas');
+    this.fogCanvas.width = this.screenW;
+    this.fogCanvas.height = this.screenH;
+    this.fogCtx = this.fogCanvas.getContext('2d')!;
+    
+    if (this.textures.exists(this.fogTextureKey)) {
+      this.textures.remove(this.fogTextureKey);
+    }
+    this.textures.addCanvas(this.fogTextureKey, this.fogCanvas);
+    
+    this.fogImage = this.add.image(0, 0, this.fogTextureKey);
+    this.fogImage.setOrigin(0, 0);
+    this.fogImage.setScrollFactor(0);
+    this.fogImage.setDepth(10);
+  }
+
+  // Update fog based on player position and room lighting
+  private updateFloorFog() {
+    const ctx = this.fogCtx;
+    const screenX = this.player.x - this.cam.scrollX;
+    const screenY = this.player.y - this.cam.scrollY;
+    
+    // Check if player is in a dark room
+    const playerRoom = this.floorRooms.find(r => 
+      this.player.x >= r.x && this.player.x <= r.x + r.w &&
+      this.player.y >= r.y && this.player.y <= r.y + r.h
+    );
+    const inDarkRoom = playerRoom && !playerRoom.lightOn;
+    
+    // Cone parameters - smaller in dark rooms
+    const coneRadius = inDarkRoom ? this.viewRadius * 1.2 : this.viewRadius * 4;
+    const coneAngle = Math.PI / 2; // 90 degrees cone
+    
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.94)';
+    ctx.fillRect(0, 0, this.screenW, this.screenH);
+    
+    ctx.globalCompositeOperation = 'destination-out';
+    
+    // Raycasting for wall-occluded vision
+    const rayCount = 60;
+    const startAngle = this.playerFacingAngle - coneAngle / 2;
+    const endAngle = this.playerFacingAngle + coneAngle / 2;
+    const angleStep = (endAngle - startAngle) / rayCount;
+    
+    ctx.beginPath();
+    ctx.moveTo(screenX, screenY);
+    
+    for (let i = 0; i <= rayCount; i++) {
+      const angle = startAngle + angleStep * i;
+      const rayEnd = this.castFloorRay(this.player.x, this.player.y, angle, coneRadius);
+      
+      const rayScreenX = rayEnd.x - this.cam.scrollX;
+      const rayScreenY = rayEnd.y - this.cam.scrollY;
+      
+      ctx.lineTo(rayScreenX, rayScreenY);
+    }
+    
+    ctx.closePath();
+    
+    const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, coneRadius);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+    gradient.addColorStop(0.7, 'rgba(0, 0, 0, 1)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    
+    ctx.globalCompositeOperation = 'source-over';
+    
+    // Upload canvas to WebGL texture
+    const renderer = this.game.renderer as any;
+    const gl = renderer.gl;
+    if (gl) {
+      const source = this.fogImage.texture.source[0];
+      const glTexture = source.glTexture;
+      if (!glTexture) return;
+      const webGLTexture = (glTexture as any).webGLTexture;
+      gl.bindTexture(gl.TEXTURE_2D, webGLTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.fogCanvas);
+    }
+  }
+
+  // Raycasting for vision occlusion
+  private castFloorRay(originX: number, originY: number, angle: number, maxDist: number): { x: number; y: number } {
+    const step = 5;
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    
+    for (let dist = 0; dist < maxDist; dist += step) {
+      const checkX = originX + dirX * dist;
+      const checkY = originY + dirY * dist;
+      
+      if (this.isFloorObstacleAt(checkX, checkY, 1)) {
+        return { x: checkX, y: checkY };
+      }
+    }
+    
+    return { x: originX + dirX * maxDist, y: originY + dirY * maxDist };
+  }
+
+  // Check if point is inside obstacle
+  private isFloorObstacleAt(x: number, y: number, radius: number): boolean {
+    for (const obs of this.obstacles) {
+      const closestX = Phaser.Math.Clamp(x, obs.x, obs.x + obs.w);
+      const closestY = Phaser.Math.Clamp(y, obs.y, obs.y + obs.h);
+      const dist = Phaser.Math.Distance.Between(x, y, closestX, closestY);
+      if (dist < radius) return true;
+    }
+    return false;
+  }
+
+  // Handle light switch interaction
+  private handleFloorLightSwitch(): boolean {
+    for (const room of this.floorRooms) {
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, room.switchX, room.switchY);
+      if (dist < 40 && room.hasLight) {
+        room.lightOn = !room.lightOn;
+        
+        // Update overlay
+        const overlayIdx = this.floorRooms.indexOf(room);
+        if (room.lightOn) {
+          if (this.roomLightOverlays[overlayIdx]) {
+            this.roomLightOverlays[overlayIdx].destroy();
+            this.roomLightOverlays[overlayIdx] = null as any;
+          }
+        } else {
+          const overlay = this.add.graphics();
+          overlay.fillStyle(0x000000, 0.7);
+          overlay.fillRect(room.x, room.y, room.w, room.h);
+          overlay.setDepth(2);
+          this.roomLightOverlays[overlayIdx] = overlay;
+        }
+        
+        // Redraw switch
+        if (this.mapGraphics) this.mapGraphics.destroy();
+        this.mapGraphics = this.add.graphics();
+        this.drawFloorRooms();
+        
+        return true;
+      }
+    }
+    return false;
+  }
+
   create() {
+    this.cam = this.cameras.main;
     this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
     
     // Input
@@ -279,9 +563,12 @@ export class AbyssHotelScene extends Phaser.Scene {
     const floor = this.generateFloor(this.currentFloor);
     this.currentFloorData = floor;
     
-    // Reset player position
-    this.player.x = 400;
-    this.player.y = 500;
+    // Generate room layout
+    this.generateFloorRooms();
+    
+    // Reset player position to elevator zone
+    this.player.x = 320;
+    this.player.y = 510;
     
     // Create player sprite
     this.playerSprite = this.add.container(this.player.x, this.player.y);
@@ -299,8 +586,10 @@ export class AbyssHotelScene extends Phaser.Scene {
         Phaser.Math.Between(1, 2);
       
       for (let i = 0; i < count; i++) {
-        const mx = Phaser.Math.Between(100, 700);
-        const my = Phaser.Math.Between(100, 400);
+        // Place monsters in random rooms (avoid first room)
+        const room = this.floorRooms[Phaser.Math.Between(1, this.floorRooms.length - 1)];
+        const mx = Phaser.Math.Between(room.x + 30, room.x + room.w - 30);
+        const my = Phaser.Math.Between(room.y + 30, room.y + room.h - 30);
         const healthMult = 1 + (this.currentFloor - 1) * 0.15;
         this.monsters.push({
           x: mx, y: my,
@@ -314,13 +603,14 @@ export class AbyssHotelScene extends Phaser.Scene {
       }
     }
     
-    // Generate resources
+    // Generate resources in rooms
     const goldCount = Phaser.Math.Between(3, 6) + Math.floor(this.currentFloor / 3);
     const matCount = Phaser.Math.Between(2, 4);
     
     for (let i = 0; i < goldCount; i++) {
-      const rx = Phaser.Math.Between(50, 750);
-      const ry = Phaser.Math.Between(50, 550);
+      const room = this.floorRooms[Phaser.Math.Between(0, this.floorRooms.length - 1)];
+      const rx = Phaser.Math.Between(room.x + 20, room.x + room.w - 20);
+      const ry = Phaser.Math.Between(room.y + 20, room.y + room.h - 20);
       this.resources.push({
         x: rx, y: ry,
         type: 'gold',
@@ -331,8 +621,9 @@ export class AbyssHotelScene extends Phaser.Scene {
     }
     
     for (let i = 0; i < matCount; i++) {
-      const rx = Phaser.Math.Between(50, 750);
-      const ry = Phaser.Math.Between(50, 550);
+      const room = this.floorRooms[Phaser.Math.Between(0, this.floorRooms.length - 1)];
+      const rx = Phaser.Math.Between(room.x + 20, room.x + room.w - 20);
+      const ry = Phaser.Math.Between(room.y + 20, room.y + room.h - 20);
       this.resources.push({
         x: rx, y: ry,
         type: 'material',
@@ -344,8 +635,9 @@ export class AbyssHotelScene extends Phaser.Scene {
     
     // Small chance for worker
     if (Math.random() < 0.2) {
-      const rx = Phaser.Math.Between(100, 700);
-      const ry = Phaser.Math.Between(100, 400);
+      const room = this.floorRooms[Phaser.Math.Between(0, this.floorRooms.length - 1)];
+      const rx = Phaser.Math.Between(room.x + 20, room.x + room.w - 20);
+      const ry = Phaser.Math.Between(room.y + 20, room.y + room.h - 20);
       this.resources.push({
         x: rx, y: ry,
         type: 'worker',
@@ -355,7 +647,16 @@ export class AbyssHotelScene extends Phaser.Scene {
       });
     }
     
-    this.drawFloorMap();
+    // Draw room map
+    this.mapGraphics = this.add.graphics();
+    this.drawFloorRooms();
+    
+    // Create fog of war
+    this.createFloorFog();
+    
+    // Camera follow
+    this.cameras.main.startFollow(this.playerSprite, true, 0.1, 0.1);
+    
     this.createFloorUI();
   }
 
@@ -377,10 +678,10 @@ export class AbyssHotelScene extends Phaser.Scene {
       color: '#ffffff',
     }).setOrigin(0.5);
     
-    // Elevator (exit)
+    // Elevator (exit) - inside bottom-left room
     this.mapGraphics.fillStyle(0x4488ff, 0.3);
-    this.mapGraphics.fillRect(350, 520, 100, 60);
-    this.add.text(400, 550, '电梯', {
+    this.mapGraphics.fillRect(280, 480, 80, 60);
+    this.add.text(320, 510, '电梯', {
       fontSize: '14px',
       color: '#4488ff',
     }).setOrigin(0.5);
@@ -595,7 +896,7 @@ export class AbyssHotelScene extends Phaser.Scene {
   }
 
   private updateFloor(delta: number) {
-    // Movement
+    // Movement with obstacle collision
     const speed = 150;
     const dt = delta / 1000;
     let dx = 0, dy = 0;
@@ -607,8 +908,19 @@ export class AbyssHotelScene extends Phaser.Scene {
     
     if (dx !== 0 || dy !== 0) {
       const len = Math.sqrt(dx * dx + dy * dy);
-      this.player.x += (dx / len) * speed * dt;
-      this.player.y += (dy / len) * speed * dt;
+      const newX = this.player.x + (dx / len) * speed * dt;
+      const newY = this.player.y + (dy / len) * speed * dt;
+      
+      // Update facing angle
+      this.playerFacingAngle = Math.atan2(dy, dx);
+      
+      // Check collision before moving
+      if (!this.isFloorObstacleAt(newX, this.player.y, 12)) {
+        this.player.x = newX;
+      }
+      if (!this.isFloorObstacleAt(this.player.x, newY, 12)) {
+        this.player.y = newY;
+      }
       
       this.player.x = Phaser.Math.Clamp(this.player.x, 20, 780);
       this.player.y = Phaser.Math.Clamp(this.player.y, 20, 580);
@@ -617,37 +929,45 @@ export class AbyssHotelScene extends Phaser.Scene {
       this.playerSprite.y = this.player.y;
     }
     
-    // Pickup / Attack
+    // Update fog of war
+    this.updateFloorFog();
+    
+    // Pickup / Attack / Light switch
     if (Phaser.Input.Keyboard.JustDown(this.eKey)) {
-      // Pickup resources
-      for (const res of this.resources) {
-        if (res.collected) continue;
-        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, res.x, res.y);
-        if (dist < 30) {
-          res.collected = true;
-          res.sprite.setVisible(false);
-          if (res.type === 'gold') this.player.gold += res.amount;
-          else if (res.type === 'material') this.player.materials += res.amount;
-          else if (res.type === 'worker') this.player.workers += res.amount;
-          this.updateInventoryUI();
-          break;
-        }
-      }
+      // First check for light switches
+      const handledLightSwitch = this.handleFloorLightSwitch();
       
-      // Attack monsters
-      for (const mon of this.monsters) {
-        if (!mon.isAlive) continue;
-        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, mon.x, mon.y);
-        if (dist < 40) {
-          mon.health -= 25;
-          if (mon.health <= 0) {
-            mon.isAlive = false;
-            mon.sprite.setVisible(false);
-            // Drop gold
-            this.player.gold += 5 + Math.floor(this.currentFloor / 2);
+      if (!handledLightSwitch) {
+        // Pickup resources
+        for (const res of this.resources) {
+          if (res.collected) continue;
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, res.x, res.y);
+          if (dist < 30) {
+            res.collected = true;
+            res.sprite.setVisible(false);
+            if (res.type === 'gold') this.player.gold += res.amount;
+            else if (res.type === 'material') this.player.materials += res.amount;
+            else if (res.type === 'worker') this.player.workers += res.amount;
             this.updateInventoryUI();
+            break;
           }
-          break;
+        }
+        
+        // Attack monsters
+        for (const mon of this.monsters) {
+          if (!mon.isAlive) continue;
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, mon.x, mon.y);
+          if (dist < 40) {
+            mon.health -= 25;
+            if (mon.health <= 0) {
+              mon.isAlive = false;
+              mon.sprite.setVisible(false);
+              // Drop gold
+              this.player.gold += 5 + Math.floor(this.currentFloor / 2);
+              this.updateInventoryUI();
+            }
+            break;
+          }
         }
       }
     }
@@ -687,7 +1007,8 @@ export class AbyssHotelScene extends Phaser.Scene {
       this.showMessage('楼层已清除！可以建造房间了 (按R)');
       this.time.delayedCall(2000, () => this.hideMessage());
       if (this.mapGraphics) this.mapGraphics.destroy();
-      this.drawFloorMap();
+      this.mapGraphics = this.add.graphics();
+      this.drawFloorRooms();
     }
     
     // Build room
@@ -699,7 +1020,7 @@ export class AbyssHotelScene extends Phaser.Scene {
     }
     
     // Return to elevator
-    const inElevator = this.player.x > 350 && this.player.x < 450 && this.player.y > 520 && this.player.y < 580;
+    const inElevator = this.player.x > 280 && this.player.x < 360 && this.player.y > 480 && this.player.y < 540;
     if (inElevator && Phaser.Input.Keyboard.JustDown(this.qKey)) {
       this.startElevatorPhase();
     }
