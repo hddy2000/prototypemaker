@@ -871,8 +871,9 @@ export class CleanupEvacScene extends Phaser.Scene {
     this.player.y = spot.y + spot.h / 2;
     this.player.setFillStyle(0x226688);
     this.player.setAlpha(0.5);
-    // 躲藏后立即清除所有怪物的最后已知位置，防止追进房间
+    // 躲藏后立即清除所有怪物的追击状态，防止追进房间
     for (const m of this.monsters) {
+      m.isChasing = false;
       m.hasLastSeen = false;
       m.searchingTimer = 0;
     }
