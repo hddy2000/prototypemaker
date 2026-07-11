@@ -21,6 +21,7 @@ npm-debug.log*
 .env.local
 !.env.production
 !.env.fly
+!.env.development
 
 # Images
 *.png
