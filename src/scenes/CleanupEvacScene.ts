@@ -34,6 +34,7 @@ interface Monster {
   giveUpDuration: number;
   isHunter: boolean;
   stunTimer: number; // 被水枪喷射时的眩晕计时
+  attackCooldown: number; // 攻击后的停顿计时
   lastSeenX: number; // 最后看到玩家的位置
   lastSeenY: number;
   hasLastSeen: boolean; // 是否有最后已知位置
@@ -502,7 +503,7 @@ export class CleanupEvacScene extends Phaser.Scene {
         this.monsters.push({
           sprite,
           speed: isHunter ? 40 : 30,
-          chaseSpeed: isHunter ? 240 : 200,
+          chaseSpeed: isHunter ? 175 : 145,
           direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
           patrolTimer: Phaser.Math.Between(0, 3000),
           isChasing: false,
@@ -515,6 +516,7 @@ export class CleanupEvacScene extends Phaser.Scene {
           giveUpDuration: isHunter ? 10000 : 8000,
           isHunter,
           stunTimer: 0,
+          attackCooldown: 0,
           lastSeenX: 0,
           lastSeenY: 0,
           hasLastSeen: false,
@@ -1157,7 +1159,7 @@ export class CleanupEvacScene extends Phaser.Scene {
           this.monsters.push({
             sprite,
             speed: isHunter ? 40 : 30,
-            chaseSpeed: isHunter ? 240 : 200,
+            chaseSpeed: isHunter ? 175 : 145,
             direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
             patrolTimer: 0,
             isChasing: true,
@@ -1170,6 +1172,7 @@ export class CleanupEvacScene extends Phaser.Scene {
             giveUpDuration: 10000,
             isHunter,
             stunTimer: 0,
+            attackCooldown: 0,
             lastSeenX: x,
             lastSeenY: y,
             hasLastSeen: true,
@@ -1201,6 +1204,13 @@ export class CleanupEvacScene extends Phaser.Scene {
         continue;
       } else {
         monster.sprite.setFillStyle(monster.isHunter ? 0xff00ff : 0xff8800);
+      }
+
+      // 攻击停顿：打中玩家后短暂停止移动
+      if (monster.attackCooldown > 0) {
+        monster.attackCooldown -= delta;
+        monster.sprite.setFillStyle(0xff4444); // 攻击停顿时变红
+        continue;
       }
 
       const distToPlayer = Phaser.Math.Distance.Between(
@@ -1383,6 +1393,7 @@ export class CleanupEvacScene extends Phaser.Scene {
           this.showMessage('🛡 护盾抵挡了攻击！');
           this.time.delayedCall(1000, () => this.hideMessage());
           this.damageCooldown = 1000;
+          monster.attackCooldown = 800; // 攻击停顿
           // 击退怪物
           const kx = monster.sprite.x - this.player.x;
           const ky = monster.sprite.y - this.player.y;
@@ -1393,6 +1404,7 @@ export class CleanupEvacScene extends Phaser.Scene {
           this.health -= 15;
           this.healthText.setText(`生命: ${this.health}`);
           this.damageCooldown = 800;
+          monster.attackCooldown = 800; // 攻击停顿
 
           // 击退
           const kx = this.player.x - monster.sprite.x;
