@@ -503,7 +503,7 @@ export class CleanupEvacScene extends Phaser.Scene {
         this.monsters.push({
           sprite,
           speed: isHunter ? 40 : 30,
-          chaseSpeed: isHunter ? 175 : 145,
+          chaseSpeed: isHunter ? 185 : 170,
           direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
           patrolTimer: Phaser.Math.Between(0, 3000),
           isChasing: false,
@@ -871,6 +871,11 @@ export class CleanupEvacScene extends Phaser.Scene {
     this.player.y = spot.y + spot.h / 2;
     this.player.setFillStyle(0x226688);
     this.player.setAlpha(0.5);
+    // 躲藏后立即清除所有怪物的最后已知位置，防止追进房间
+    for (const m of this.monsters) {
+      m.hasLastSeen = false;
+      m.searchingTimer = 0;
+    }
     this.showMessage('躲藏中！怪物无法发现你。\n再按 E 离开');
     this.time.delayedCall(2500, () => this.hideMessage());
   }
@@ -1159,7 +1164,7 @@ export class CleanupEvacScene extends Phaser.Scene {
           this.monsters.push({
             sprite,
             speed: isHunter ? 40 : 30,
-            chaseSpeed: isHunter ? 175 : 145,
+            chaseSpeed: isHunter ? 185 : 170,
             direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
             patrolTimer: 0,
             isChasing: true,
