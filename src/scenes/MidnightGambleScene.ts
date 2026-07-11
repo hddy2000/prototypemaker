@@ -69,7 +69,6 @@ export class MidnightGambleScene extends Phaser.Scene {
   };
   private monsters: Monster[] = [];
   private resources: Resource[] = [];
-  private currentLocation: Location | null = null;
   private missionTimer = 0;
   private missionTimeLimit = 60000; // 60 seconds
   private isExtracting = false;
@@ -118,7 +117,6 @@ export class MidnightGambleScene extends Phaser.Scene {
   private screenH = 600;
   private cam!: Phaser.Cameras.Scene2D.Camera;
   private playerFacingAngle = 0;
-  private buildMode = false; // R key build mode
 
   constructor() {
     super({ key: 'MidnightGambleScene' });
@@ -357,40 +355,6 @@ export class MidnightGambleScene extends Phaser.Scene {
     return false;
   }
 
-  // Handle light switch interaction
-  private handleLightSwitch() {
-    if (!Phaser.Input.Keyboard.JustDown(this.eKey)) return;
-    
-    for (const room of this.rooms) {
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, room.switchX, room.switchY);
-      if (dist < 40 && room.hasLight) {
-        room.lightOn = !room.lightOn;
-        
-        // Update overlay
-        const overlayIdx = this.rooms.indexOf(room);
-        if (room.lightOn) {
-          if (this.roomLightOverlays[overlayIdx]) {
-            this.roomLightOverlays[overlayIdx].destroy();
-            this.roomLightOverlays[overlayIdx] = null as any;
-          }
-        } else {
-          const overlay = this.add.graphics();
-          overlay.fillStyle(0x000000, 0.7);
-          overlay.fillRect(room.x, room.y, room.w, room.h);
-          overlay.setDepth(2);
-          this.roomLightOverlays[overlayIdx] = overlay;
-        }
-        
-        // Redraw switch
-        if (this.mapGraphics) this.mapGraphics.destroy();
-        this.mapGraphics = this.add.graphics();
-        this.drawRooms();
-        
-        break;
-      }
-    }
-  }
-
   create() {
     this.cam = this.cameras.main;
     this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
@@ -520,7 +484,6 @@ export class MidnightGambleScene extends Phaser.Scene {
     this.gameState = 'mission';
     this.clearScene();
     
-    this.currentLocation = location;
     this.missionTimer = this.missionTimeLimit;
     this.isExtracting = false;
     
@@ -585,26 +548,6 @@ export class MidnightGambleScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.playerSprite, true, 0.1, 0.1);
     
     this.createMissionUI();
-  }
-
-  private drawMissionMap() {
-    this.mapGraphics = this.add.graphics();
-    this.mapGraphics.fillStyle(0x1a1a2e, 1);
-    this.mapGraphics.fillRect(0, 0, this.mapWidth, this.mapHeight);
-    
-    // Location name
-    this.add.text(400, 30, `${this.currentLocation!.icon} ${this.currentLocation!.name}`, {
-      fontSize: '24px',
-      color: '#ffcc00',
-    }).setOrigin(0.5);
-    
-    // Extraction zone (inside bottom-left room)
-    this.mapGraphics.fillStyle(0x00ff00, 0.3);
-    this.mapGraphics.fillRect(280, 480, 80, 60);
-    this.add.text(320, 510, '撤离点', {
-      fontSize: '14px',
-      color: '#00ff00',
-    }).setOrigin(0.5);
   }
 
   private createMonsterSprite(x: number, y: number, type: string): Phaser.GameObjects.Container {

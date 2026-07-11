@@ -62,8 +62,6 @@ export class BlindBoxHorrorScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private eKey!: Phaser.Input.Keyboard.Key;
-  private fKey!: Phaser.Input.Keyboard.Key;
-  private qKey!: Phaser.Input.Keyboard.Key;
 
   // Map - multi-floor
   private mapWidth = 900;
@@ -162,7 +160,7 @@ export class BlindBoxHorrorScene extends Phaser.Scene {
     this.cam.startFollow(this.player, true, 0.1, 0.1);
   }
 
-  update(time: number, delta: number) {
+  update(_time: number, delta: number) {
     if (this.isDead || this.isWon) return;
 
     this.handleMovement(delta);
@@ -883,7 +881,7 @@ export class BlindBoxHorrorScene extends Phaser.Scene {
     ctx.restore();
 
     // Manual WebGL texture upload
-    const gl = this.game.gl;
+    const gl = (this.game.renderer as any).gl;
     if (gl) {
       const texture = this.textures.get(this.fogTextureKey);
       const glTexture = texture.source[0].glTexture;
@@ -1089,8 +1087,6 @@ export class BlindBoxHorrorScene extends Phaser.Scene {
     }) as any;
 
     this.eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.fKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
-    this.qKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
 
     this.input.keyboard!.on('keydown-E', () => {
       this.handleInteraction();
@@ -1156,7 +1152,7 @@ export class BlindBoxHorrorScene extends Phaser.Scene {
     });
   }
 
-  private updateRoomLight(room: Room) {
+  private updateRoomLight(_room: Room) {
     for (const overlay of this.roomLightOverlays) {
       overlay.destroy();
     }
