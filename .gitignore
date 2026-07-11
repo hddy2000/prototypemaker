@@ -16,12 +16,7 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Environment
-.env.*
-.env.local
-!.env.production
-!.env.fly
-!.env.development
+# Environment (tracked - no .env ignores)
 
 # Images
 *.png
