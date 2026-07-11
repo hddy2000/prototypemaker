@@ -475,6 +475,9 @@ export class PinballScene extends Phaser.Scene {
     this.bossHitCooldown = 0;
     this.bulletTimer = 0;
     this.lowSpeedFrames = 0;
+    this.stallFrames = 0;
+    this.stallCheckX = 0;
+    this.stallCheckY = 0;
     this.bumpers = [];
     this.nails = [];
     this.grotesques = [];
@@ -585,12 +588,17 @@ export class PinballScene extends Phaser.Scene {
   // ── 防卡关：球速度极低且持续多帧时才补能 ────────────────────────────────
 
   private lowSpeedFrames = 0;  // 球低速持续的帧数
+  private stallCheckX = 0;  // 防卡关：记录上次检查时球的x位置
+  private stallCheckY = 0;  // 防卡关：记录上次检查时球的y位置
+  private stallFrames = 0;  // 球在小范围内停留的帧数
 
   private preventStall() {
     if (this.isLaunching) return;
     const vx = this.ballBody.velocity.x;
     const vy = this.ballBody.velocity.y;
     const speed = Math.sqrt(vx * vx + vy * vy);
+
+    // 检测1：球速度极低
     if (speed < MIN_BALL_SPEED) {
       this.lowSpeedFrames++;
       // 只有连续 60 帧（约1秒）低速才补能，避免每帧干预导致诡异匀速
@@ -603,9 +611,35 @@ export class PinballScene extends Phaser.Scene {
           Math.sin(angle) * boost
         );
         this.lowSpeedFrames = 0;
+        this.stallFrames = 0;
       }
     } else {
       this.lowSpeedFrames = 0;
+    }
+
+    // 检测2：球在小范围内停留太久（即使速度不低，如在bumper上反复弹跳）
+    const moveDist = Math.sqrt(
+      (this.ball.x - this.stallCheckX) ** 2 + (this.ball.y - this.stallCheckY) ** 2
+    );
+    if (moveDist < 60) {
+      this.stallFrames++;
+    } else {
+      this.stallFrames = 0;
+      this.stallCheckX = this.ball.x;
+      this.stallCheckY = this.ball.y;
+    }
+
+    // 连续180帧（约3秒）在小范围内停留 → 强制弹开
+    if (this.stallFrames > 180) {
+      const angle = Phaser.Math.FloatBetween(-Math.PI * 0.75, -Math.PI * 0.25);
+      const boost = 400;
+      this.ballBody.setVelocity(
+        Math.cos(angle) * boost,
+        Math.sin(angle) * boost
+      );
+      this.stallFrames = 0;
+      this.stallCheckX = this.ball.x;
+      this.stallCheckY = this.ball.y;
     }
   }
 
@@ -943,7 +977,13 @@ export class PinballScene extends Phaser.Scene {
     const dy = this.ball.y - rib.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > 0) {
-      this.ballBody.setVelocity((dx / dist) * BUMPER_BOUNCE, (dy / dist) * BUMPER_BOUNCE);
+      let vx = (dx / dist) * BUMPER_BOUNCE;
+      let vy = (dy / dist) * BUMPER_BOUNCE;
+      // 防止球在rib正上方永久垂直弹跳
+      if (Math.abs(vx) < 80) {
+        vx = (Math.random() < 0.5 ? -1 : 1) * (80 + Math.random() * 80);
+      }
+      this.ballBody.setVelocity(vx, vy);
     }
 
     // 分裂弹珠：第一次弹射时分裂
@@ -1111,9 +1151,14 @@ export class PinballScene extends Phaser.Scene {
     if (!organ || organ.destroyed) return;
 
     // 向上弹射球（无论是否变暗都反弹）
-    const dx = this.ball.x - (this.ball.x < GAME_W / 2 ? 60 : 740);
+    const dx = this.ball.x - wall.x;
     const dist = Math.max(1, Math.abs(dx));
-    this.ballBody.setVelocity((dx / dist) * 200, -GROTESQUE_BOUNCE_VEL);
+    let vx = (dx / dist) * 200;
+    // 防止球在fleshWall正上方永久垂直弹跳
+    if (Math.abs(vx) < 80) {
+      vx = (Math.random() < 0.5 ? -1 : 1) * (80 + Math.random() * 80);
+    }
+    this.ballBody.setVelocity(vx, -GROTESQUE_BOUNCE_VEL);
 
     // 分裂弹珠：第一次弹射时分裂
     this.trySplitBall(this.ball, this.ballBody, this.ballType, false);
@@ -1836,7 +1881,7 @@ export class PinballScene extends Phaser.Scene {
     this.physics.add.existing(grotesque, true);
     this.physics.add.collider(this.ball, grotesque, () => {
       if (!this.canHitObstacle(grotesque)) return;
-      this.hitGrotesque();
+      this.hitGrotesque(grotesque);
     });
     this.grotesques.push(grotesque);
 
@@ -1969,10 +2014,13 @@ export class PinballScene extends Phaser.Scene {
     const dy = this.ball.y - bumper.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > 0) {
-      this.ballBody.setVelocity(
-        (dx / dist) * BUMPER_BOUNCE,
-        (dy / dist) * BUMPER_BOUNCE
-      );
+      let vx = (dx / dist) * BUMPER_BOUNCE;
+      let vy = (dy / dist) * BUMPER_BOUNCE;
+      // 防止球在bumper正上方永久垂直弹跳：水平分量太小时添加随机偏移
+      if (Math.abs(vx) < 80) {
+        vx = (Math.random() < 0.5 ? -1 : 1) * (80 + Math.random() * 80);
+      }
+      this.ballBody.setVelocity(vx, vy);
     }
 
     // 分裂弹珠：第一次弹射时分裂
@@ -2057,20 +2105,22 @@ export class PinballScene extends Phaser.Scene {
     }
   }
 
-  private hitGrotesque() {
+  private hitGrotesque(grotesque: Phaser.GameObjects.Rectangle) {
     // 沟壑弹射球向上
-    const dx = this.ball.x - (this.ball.x < GAME_W / 2 ? 60 : 740);
+    const dx = this.ball.x - grotesque.x;
     const dist = Math.max(1, Math.abs(dx));
-    this.ballBody.setVelocity(
-      (dx / dist) * 200,
-      -GROTESQUE_BOUNCE_VEL
-    );
+    let vx = (dx / dist) * 200;
+    // 防止球在grotesque正上方永久垂直弹跳
+    if (Math.abs(vx) < 80) {
+      vx = (Math.random() < 0.5 ? -1 : 1) * (80 + Math.random() * 80);
+    }
+    this.ballBody.setVelocity(vx, -GROTESQUE_BOUNCE_VEL);
 
     // 分裂弹珠：第一次弹射时分裂
     this.trySplitBall(this.ball, this.ballBody, this.ballType, false);
 
-    // 查找沟壑器官
-    const organ = this.organs.find(o => o.type === 'grotesque');
+    // 通过 organRef 获取正确的器官
+    const organ = grotesque.getData('organRef') as Organ | null;
     if (organ && !organ.destroyed && !organ.darkened) {
       const damage = this.getBallDamage();
       organ.hp -= damage;
@@ -2078,7 +2128,7 @@ export class PinballScene extends Phaser.Scene {
       this.score += GROTESQUE_SCORE;
       this.damageBall(1);
       this.applyBallEffects(organ);
-      this.showFloatingText(this.ball.x, 100, `-${damage}`, '#ffff00');
+      this.showFloatingText(grotesque.x, grotesque.y - 20, `-${damage}`, '#ffff00');
       this.updateOrganHpBar(organ);
       if (organ.hp <= 0) {
         this.destroyOrgan(organ);
@@ -2794,7 +2844,13 @@ export class PinballScene extends Phaser.Scene {
         const dy = ballObj.y - b.obj.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist > 0) {
-          ballBody.setVelocity((dx / dist) * BUMPER_BOUNCE, (dy / dist) * BUMPER_BOUNCE);
+          let vx = (dx / dist) * BUMPER_BOUNCE;
+          let vy = (dy / dist) * BUMPER_BOUNCE;
+          // 防止球在bumper正上方永久垂直弹跳
+          if (Math.abs(vx) < 80) {
+            vx = (Math.random() < 0.5 ? -1 : 1) * (80 + Math.random() * 80);
+          }
+          ballBody.setVelocity(vx, vy);
         }
         if (organ && !organ.destroyed && !organ.darkened) {
           const damage = this.getBallDamage();
@@ -2873,9 +2929,14 @@ export class PinballScene extends Phaser.Scene {
       this.physics.add.collider(ballObj, g, () => {
         if (!this.canHitObstacle(g)) return;
         const organ = g.getData('organRef') as Organ | null;
-        const dx = ballObj.x - (ballObj.x < GAME_W / 2 ? 60 : 740);
+        const dx = ballObj.x - g.x;
         const dist = Math.max(1, Math.abs(dx));
-        ballBody.setVelocity((dx / dist) * 200, -GROTESQUE_BOUNCE_VEL);
+        let vx = (dx / dist) * 200;
+        // 防止球在grotesque正上方永久垂直弹跳
+        if (Math.abs(vx) < 80) {
+          vx = (Math.random() < 0.5 ? -1 : 1) * (80 + Math.random() * 80);
+        }
+        ballBody.setVelocity(vx, -GROTESQUE_BOUNCE_VEL);
         if (organ && !organ.destroyed && !organ.darkened) {
           const damage = this.getBallDamage();
           organ.hp -= damage;
