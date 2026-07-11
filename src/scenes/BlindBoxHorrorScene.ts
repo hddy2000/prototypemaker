@@ -880,12 +880,15 @@ export class BlindBoxHorrorScene extends Phaser.Scene {
 
     ctx.restore();
 
-    // Manual WebGL texture upload
-    const gl = (this.game.renderer as any).gl;
+    // Manual WebGL texture upload (Phaser 3.90 bug workaround)
+    const renderer = this.game.renderer as any;
+    const gl = renderer.gl;
     if (gl) {
-      const texture = this.textures.get(this.fogTextureKey);
-      const glTexture = texture.source[0].glTexture;
-      gl.bindTexture(gl.TEXTURE_2D, glTexture);
+      const source = this.fogImage.texture.source[0];
+      const glTexture = source.glTexture;
+      if (!glTexture) return;
+      const webGLTexture = (glTexture as any).webGLTexture;
+      gl.bindTexture(gl.TEXTURE_2D, webGLTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.fogCanvas);
     }
   }
