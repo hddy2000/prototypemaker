@@ -47,12 +47,12 @@ const BUMPER_BOUNCE = 450;
 const GROTESQUE_BOUNCE_VEL = 420;  // 沟壑改为弹射而非减速
 
 // 球
-const MAX_BALLS = 8;
+const MAX_BALLS = 10;
 const MAX_BALLS_LEVEL2 = 12;  // 第二关存球量
 const BALL_DURABILITY = 28;
 
 // 第二关
-const BOSS2_MAX_HP = 320;  // 8倍
+const BOSS2_MAX_HP = 240;  // 6倍
 const BOSS2_BULLET_SPEED = 300;
 const BOSS2_BULLET_INTERVAL = 2000;  // 每2秒发射一颗子弹
 const BOSS2_BULLET_RADIUS = 8;
@@ -92,7 +92,7 @@ const RIB_HP = 5;
 const SPINE_HP = 2;
 const JOINT_HP = 4;
 const FLESH_WALL_HP = 6;
-const HEART_HP = 480;  // 8倍
+const HEART_HP = 360;  // 6倍
 
 // 状态效果
 const BURN_DURATION = 3000;       // 灼烧持续3秒
@@ -137,7 +137,7 @@ const SLINGSHOT_SCORE = 120;
 // 统一Boss HP
 const BOSS_HP_L1 = 150;  // 5倍
 const ORGAN_BOSS_DAMAGE = 1;    // 器官/障碍物命中扣Boss血量
-const HEART_BOSS_DAMAGE = 4;   // 心脏/顶部圆球命中扣Boss血量（4倍器官伤害）
+const HEART_BOSS_DAMAGE = 5.5; // 心脏/顶部圆球命中扣Boss血量（5.5倍器官伤害）
 const DIRECT_BOSS_DAMAGE = 4;  // 直接命中Boss扣血量（4倍器官伤害）
 
 // 器官恢复系统
@@ -338,9 +338,9 @@ export class PinballScene extends Phaser.Scene {
 
     // 关卡选项
     const levels = [
-      { name: '第一关：赌场老板', desc: '基础弹珠 × 8  •  Boss HP 150', color: '#44ff44' },
-      { name: '第二关：暴怒老板', desc: '基础 × 8 + 烈焰 × 4  •  Boss HP 320', color: '#ff8844' },
-      { name: '第三关：地图即怪物', desc: '基础 × 5 + 烈焰 × 3 + 分裂 × 3  •  Boss HP 480', color: '#ff4444' },
+      { name: '第一关：赌场老板', desc: '基础弹珠 × 10  •  Boss HP 150', color: '#44ff44' },
+      { name: '第二关：暴怒老板', desc: '基础 × 8 + 烈焰 × 4  •  Boss HP 240', color: '#ff8844' },
+      { name: '第三关：地图即怪物', desc: '基础 × 5 + 烈焰 × 3 + 分裂 × 3  •  Boss HP 360', color: '#ff4444' },
     ];
 
     this.levelSelectTexts = [];
