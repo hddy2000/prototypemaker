@@ -98,6 +98,11 @@ export class MenuScene extends Phaser.Scene {
       name: '清扫撤离',
       description: '进入黑暗废弃建筑，用水枪清扫污渍！清扫后随机掉落宝物或触发怪物，收集价值1000后到撤离点撤离！',
     },
+    {
+      key: 'BlindBoxHorrorScene',
+      name: '盲盒惊魂',
+      description: '携带盲盒探索三层鬼屋，找到破解台开盒：可能获得财宝、召唤怪物或BOSS！收集财宝逃离！',
+    },
     // Add new prototypes here
   ];
 
