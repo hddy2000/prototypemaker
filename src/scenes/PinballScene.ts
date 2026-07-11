@@ -183,6 +183,10 @@ interface Organ {
 export class PinballScene extends Phaser.Scene {
   // 关卡
   private level = 1;
+  private showingLevelSelect = true;  // 选关界面标志
+  private selectedLevel = 0;  // 选关界面当前选中项（0=第一关, 1=第二关, 2=第三关）
+  private levelSelectTexts: Phaser.GameObjects.Text[] = [];
+  private levelSelectBg!: Phaser.GameObjects.Rectangle;
 
   // 弹珠
   private ball!: Phaser.GameObjects.Arc;
@@ -306,6 +310,113 @@ export class PinballScene extends Phaser.Scene {
   // ── 生命周期 ────────────────────────────────────────────────────────────
 
   create() {
+    if (this.showingLevelSelect) {
+      // 显示选关界面
+      this.showLevelSelect();
+    } else {
+      // 直接初始化游戏（通关后进入下一关）
+      this.initGame();
+    }
+  }
+
+  // ── 选关界面 ────────────────────────────────────────────────────────────
+  private showLevelSelect() {
+    this.cameras.main.setBackgroundColor('#0a0a0f');
+
+    // 半透明背景
+    this.levelSelectBg = this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x0a0a0f);
+    this.levelSelectBg.setDepth(200);
+
+    // 标题
+    this.add.text(GAME_W / 2, 100, '🎰 弹珠赌局', {
+      fontSize: '48px', color: '#ffaa44', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(201);
+
+    this.add.text(GAME_W / 2, 145, '选择关卡', {
+      fontSize: '24px', color: '#aaaaaa',
+    }).setOrigin(0.5).setDepth(201);
+
+    // 关卡选项
+    const levels = [
+      { name: '第一关：赌场老板', desc: '基础弹珠 × 8  •  Boss HP 150', color: '#44ff44' },
+      { name: '第二关：暴怒老板', desc: '基础 × 8 + 烈焰 × 4  •  Boss HP 320', color: '#ff8844' },
+      { name: '第三关：地图即怪物', desc: '基础 × 5 + 烈焰 × 3 + 分裂 × 3  •  Boss HP 480', color: '#ff4444' },
+    ];
+
+    this.levelSelectTexts = [];
+    levels.forEach((lv, i) => {
+      const y = 230 + i * 100;
+      const nameText = this.add.text(GAME_W / 2, y, lv.name, {
+        fontSize: '28px', color: lv.color, fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(201);
+
+      this.add.text(GAME_W / 2, y + 30, lv.desc, {
+        fontSize: '14px', color: '#888888',
+      }).setOrigin(0.5).setDepth(201);
+
+      // 可点击
+      const hitArea = this.add.rectangle(GAME_W / 2, y + 15, 600, 80, 0xffffff, 0)
+        .setInteractive({ useHandCursor: true })
+        .setDepth(200);
+      hitArea.on('pointerdown', () => {
+        this.selectedLevel = i;
+        this.updateLevelSelect();
+        this.startLevel(i + 1);
+      });
+      hitArea.on('pointerover', () => {
+        this.selectedLevel = i;
+        this.updateLevelSelect();
+      });
+
+      this.levelSelectTexts.push(nameText);
+    });
+
+    // 提示
+    this.add.text(GAME_W / 2, 540, '↑↓ 选择  •  Enter 确认  •  ESC 返回菜单', {
+      fontSize: '16px', color: '#666666',
+    }).setOrigin(0.5).setDepth(201);
+
+    // 键盘输入 - 使用全局keydown事件确保在选关界面期间也能响应
+    this.input.keyboard!.on('keydown-UP', () => {
+      this.selectedLevel = Phaser.Math.Wrap(this.selectedLevel - 1, 0, 3);
+      this.updateLevelSelect();
+    });
+    this.input.keyboard!.on('keydown-DOWN', () => {
+      this.selectedLevel = Phaser.Math.Wrap(this.selectedLevel + 1, 0, 3);
+      this.updateLevelSelect();
+    });
+    this.input.keyboard!.on('keydown-ENTER', () => {
+      this.startLevel(this.selectedLevel + 1);
+    });
+    this.input.keyboard!.on('keydown-ESC', () => {
+      this.scene.start('MenuScene');
+    });
+
+    this.updateLevelSelect();
+  }
+
+  private updateLevelSelect() {
+    this.levelSelectTexts.forEach((text, i) => {
+      if (i === this.selectedLevel) {
+        text.setScale(1.15);
+        text.setAlpha(1);
+      } else {
+        text.setScale(1);
+        text.setAlpha(0.6);
+      }
+    });
+  }
+
+  // ── 开始指定关卡 ────────────────────────────────────────────────────────
+  private startLevel(lv: number) {
+    this.showingLevelSelect = false;
+    this.level = lv;
+    // restart会重新调用create()，此时showingLevelSelect=false则直接initGame()
+    this.scene.restart();
+  }
+
+  // ── 实际游戏初始化 ──────────────────────────────────────────────────────
+  private initGame() {
     this.resetState();
     this.cameras.main.setBackgroundColor('#0a0a0f');
     this.physics.world.setBounds(0, 0, GAME_W, GAME_H);
@@ -411,6 +522,9 @@ export class PinballScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
+    // 选关界面期间不执行游戏更新
+    if (this.showingLevelSelect) return;
+
     if (this.isDead) return;
 
     // 通关后等待 Enter
@@ -418,9 +532,11 @@ export class PinballScene extends Phaser.Scene {
       if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
         if (this.level === 1) {
           this.level = 2;
+          this.showingLevelSelect = false;  // 跳过选关界面，直接进入下一关
           this.scene.restart();
         } else if (this.level === 2) {
           this.level = 3;
+          this.showingLevelSelect = false;  // 跳过选关界面，直接进入下一关
           this.scene.restart();
         } else {
           this.win();
