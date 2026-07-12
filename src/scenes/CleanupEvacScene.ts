@@ -46,10 +46,16 @@ interface Stain {
   x: number;
   y: number;
   radius: number;
-  cleanliness: number; // 0-100
+  cleanliness: number; // 100 = fully dirty, 0 = fully cleaned
   cleaned: boolean;
-  sprite: Phaser.GameObjects.Graphics;
+  sprite: Phaser.GameObjects.Graphics;       // dirt / rock-skin layer
+  innerSprite: Phaser.GameObjects.Graphics;  // stone interior (hidden gem)
   onWall: boolean;
+  // ── 赌石字段 ──
+  stoneType: StoneType;
+  stoneValue: number;     // 预先掷出的真实价值（0 = 非价值石）
+  revealStage: number;    // 0=未开始 1=30%线索 2=60%线索 3=完全揭晓
+  cursed: boolean;        // 完全揭晓时触发负面效果
 }
 
 interface Loot {
@@ -61,24 +67,46 @@ interface Loot {
   sprite: Phaser.GameObjects.Container;
 }
 
-type LootType = 'gold' | 'gem' | 'medkit' | 'shield';
+type StoneType = 'trash' | 'common' | 'good' | 'rare' | 'legendary' | 'medkit' | 'shield';
+type LootType = StoneType;
 
-const LOOT_INFO: Record<LootType, { color: number; name: string; label: string }> = {
-  gold:    { color: 0xffdd00, name: '金币',  label: '🟡' },
-  gem:     { color: 0x44ffff, name: '宝石',  label: '💎' },
-  medkit:  { color: 0xff4444, name: '医疗包', label: '🔴' },
-  shield:  { color: 0x44aaff, name: '护盾',   label: '🛡' },
-};
+interface StoneTier {
+  type: StoneType;
+  color: number;       // 内部颜色
+  glowColor: number;   // 发光色
+  name: string;
+  minVal: number;
+  maxVal: number;
+  weight: number;
+  clue1: string;       // 30% 清洗时的线索
+  clue2: string;       // 60% 清洗时的线索
+  isUtility: boolean;  // medkit/shield = true（无价值，有功能效果）
+}
 
-// 正面掉落表
-const POSITIVE_TABLE: { type: LootType; weight: number; value: number }[] = [
-  { type: 'gold',   weight: 50, value: 10 },
-  { type: 'gem',    weight: 30, value: 50 },
-  { type: 'medkit', weight: 15, value: 30 },
-  { type: 'shield', weight: 5,  value: 0 },
+const STONE_TIERS: StoneTier[] = [
+  { type: 'trash',     color: 0x555555, glowColor: 0x666666, name: '废料',   minVal: 5,   maxVal: 15,   weight: 40, clue1: '只看到暗灰色的石质…',           clue2: '灰色偏暗，裂纹很多…',           isUtility: false },
+  { type: 'common',    color: 0xddccaa, glowColor: 0xddccaa, name: '普通石', minVal: 20,  maxVal: 50,   weight: 25, clue1: '隐约有些米白色的光泽…',         clue2: '白色石质，看起来一般…',         isUtility: false },
+  { type: 'good',      color: 0x44dd44, glowColor: 0x44ff44, name: '好玉',   minVal: 80,  maxVal: 150,  weight: 15, clue1: '透出一丝淡绿色！有戏！',         clue2: '绿色清晰，品质不错！',         isUtility: false },
+  { type: 'rare',      color: 0x00cc44, glowColor: 0x00ff44, name: '极品玉', minVal: 200, maxVal: 500,  weight: 8,  clue1: '绿色越来越明显！感觉不错！',     clue2: '鲜艳的绿色！很可能值钱！',     isUtility: false },
+  { type: 'legendary', color: 0x00ff44, glowColor: 0x00ff88, name: '帝王绿', minVal: 800, maxVal: 1200, weight: 4,  clue1: '浓郁的翠绿色光泽！可能是极品！', clue2: '帝王绿色！这是极品中的极品！', isUtility: false },
+  { type: 'medkit',    color: 0xff4444, glowColor: 0xff6666, name: '药石',   minVal: 0,   maxVal: 0,    weight: 5,  clue1: '隐约有些米白色的光泽…',         clue2: '白色石质，看起来一般…',         isUtility: true },
+  { type: 'shield',    color: 0x44aaff, glowColor: 0x66ccff, name: '盾石',   minVal: 0,   maxVal: 0,    weight: 3,  clue1: '隐约有些米白色的光泽…',         clue2: '白色石质，看起来一般…',         isUtility: true },
 ];
 
-// 负面效果表
+const STONE_TIERS_TOTAL_WEIGHT = STONE_TIERS.reduce((s, t) => s + t.weight, 0);
+const CURSED_CHANCE = 0.15; // 15% 的价值石是诅咒石
+
+const LOOT_INFO: Record<LootType, { color: number; name: string; label: string }> = {
+  trash:     { color: 0x555555, name: '废料',   label: '🪨' },
+  common:    { color: 0xddccaa, name: '普通石', label: '⚪' },
+  good:      { color: 0x44dd44, name: '好玉',   label: '🟢' },
+  rare:      { color: 0x00cc44, name: '极品玉', label: '💎' },
+  legendary: { color: 0x00ff44, name: '帝王绿', label: '👑' },
+  medkit:    { color: 0xff4444, name: '药石',   label: '🔴' },
+  shield:    { color: 0x44aaff, name: '盾石',   label: '🛡' },
+};
+
+// 负面效果表（诅咒石触发）
 type NegativeType = 'spawn_monster' | 'alarm' | 'blind' | 'slow';
 const NEGATIVE_TABLE: { type: NegativeType; weight: number }[] = [
   { type: 'spawn_monster', weight: 60 },
@@ -224,7 +252,7 @@ export class CleanupEvacScene extends Phaser.Scene {
 
     this.cam.startFollow(this.player, true, 0.1, 0.1);
 
-    this.showMessage('用水枪清扫污渍！\n收集价值1000的宝物后到撤离点撤离\n左键喷射 | Shift疾跑(有体力) | E键躲藏脱仇恨\n小心怪物——会追很远，只有躲藏才能甩掉！');
+    this.showMessage('🎰 赌石撤离！\n用水枪清洗石皮，逐步揭晓内部价值\n左键喷射清洗 | 右键放弃开石(拿部分价值)\nShift疾跑 | E键躲藏\n洗到一半觉得不行？右键止损走人！');
     this.time.delayedCall(5000, () => this.hideMessage());
   }
 
@@ -444,14 +472,31 @@ export class CleanupEvacScene extends Phaser.Scene {
         }
       }
 
-      const radius = Phaser.Math.Between(12, 22);
-      const g = this.add.graphics();
-      const alpha = 0.7;
-      // 污渍颜色——暗红/暗绿/暗棕随机
-      const colors = [0x552222, 0x224422, 0x443311, 0x332233];
-      const color = Phaser.Utils.Array.GetRandom(colors);
+      const radius = Phaser.Math.Between(14, 24);
 
-      g.fillStyle(color, alpha);
+      // ── 掷石型 ──
+      const tier = this.rollStoneType();
+      const stoneValue = tier.isUtility ? 0 : Phaser.Math.Between(tier.minVal, tier.maxVal);
+      const cursed = !tier.isUtility && Math.random() < CURSED_CHANCE;
+
+      // ── 内部石芯（隐藏的宝石）──
+      const innerG = this.add.graphics();
+      innerG.setPosition(x, y);
+      innerG.setDepth(1.5);
+      innerG.fillStyle(tier.color, 1);
+      innerG.fillCircle(0, 0, radius * 0.7);
+      // 高品质石加发光
+      if (tier.type === 'rare' || tier.type === 'legendary') {
+        innerG.fillStyle(tier.glowColor, 0.3);
+        innerG.fillCircle(0, 0, radius * 1.0);
+      }
+      innerG.setAlpha(0); // 初始不可见
+
+      // ── 外皮（石皮/污垢）──
+      const g = this.add.graphics();
+      const dirtColors = [0x3a2a1a, 0x2a2a2a, 0x3a322a, 0x2a1a1a];
+      const color = Phaser.Utils.Array.GetRandom(dirtColors);
+      g.fillStyle(color, 0.85);
       // 不规则形状
       g.beginPath();
       const points = 8;
@@ -473,11 +518,25 @@ export class CleanupEvacScene extends Phaser.Scene {
         cleanliness: 100,
         cleaned: false,
         sprite: g,
+        innerSprite: innerG,
         onWall,
+        stoneType: tier.type,
+        stoneValue,
+        revealStage: 0,
+        cursed,
       });
       placed++;
       attempts++;
     }
+  }
+
+  private rollStoneType(): StoneTier {
+    let roll = Math.random() * STONE_TIERS_TOTAL_WEIGHT;
+    for (const tier of STONE_TIERS) {
+      roll -= tier.weight;
+      if (roll <= 0) return tier;
+    }
+    return STONE_TIERS[0];
   }
 
   // ─── Monsters ───────────────────────────────────────────────
@@ -677,14 +736,22 @@ export class CleanupEvacScene extends Phaser.Scene {
     this.eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.shiftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
-    // 鼠标喷射
+    // 禁用右键菜单
+    this.input.mouse?.disableContextMenu();
+
+    // 鼠标：左键喷射 | 右键放弃开石
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (pointer.leftButtonDown()) {
         this.isSpraying = true;
       }
+      if (pointer.rightButtonDown()) {
+        this.tryAbandonStone();
+      }
     });
-    this.input.on('pointerup', () => {
-      this.isSpraying = false;
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.leftButtonDown()) {
+        this.isSpraying = false;
+      }
     });
 
     // 喷射图形
@@ -1015,42 +1082,86 @@ export class CleanupEvacScene extends Phaser.Scene {
       // 在喷射范围内 → 清洁
       stain.cleanliness -= cleanPower;
 
-      // 更新视觉——越干净越淡
-      const alpha = Math.max(0, stain.cleanliness / 100) * 0.7;
-      stain.sprite.setAlpha(alpha);
+      // 渐进式视觉：外皮渐淡，内部石芯渐显
+      const cleanProgress = Phaser.Math.Clamp((100 - stain.cleanliness) / 100, 0, 1);
+      stain.sprite.setAlpha(Math.max(0, stain.cleanliness / 100) * 0.85);
+      stain.innerSprite.setAlpha(cleanProgress);
 
+      // ── 30% 清洗 → 第一条线索 ──
+      if (stain.revealStage === 0 && stain.cleanliness <= 70) {
+        stain.revealStage = 1;
+        const tier = STONE_TIERS.find(t => t.type === stain.stoneType)!;
+        this.showClue(stain.x, stain.y, tier.clue1, '#ffdd44');
+      }
+
+      // ── 60% 清洗 → 第二条线索 ──
+      if (stain.revealStage === 1 && stain.cleanliness <= 40) {
+        stain.revealStage = 2;
+        const tier = STONE_TIERS.find(t => t.type === stain.stoneType)!;
+        this.showClue(stain.x, stain.y, tier.clue2, '#ffaa00');
+      }
+
+      // ── 100% 清洗 → 完全揭晓 ──
       if (stain.cleanliness <= 0) {
         stain.cleaned = true;
+        stain.revealStage = 3;
         stain.sprite.setVisible(false);
+        stain.innerSprite.setAlpha(1);
         this.onStainCleaned(stain);
       }
     }
   }
 
+  private showClue(x: number, y: number, text: string, color: string) {
+    const clueText = this.add.text(x, y - 20, text, {
+      fontSize: '13px',
+      color: color,
+      stroke: '#000000',
+      strokeThickness: 3,
+      wordWrap: { width: 200 },
+      align: 'center',
+    }).setOrigin(0.5).setDepth(8);
+
+    this.tweens.add({
+      targets: clueText,
+      y: y - 55,
+      alpha: { from: 1, to: 0 },
+      duration: 2200,
+      onComplete: () => clueText.destroy(),
+    });
+  }
+
   private onStainCleaned(stain: Stain) {
-    // 60% 正面 / 40% 负面
-    if (Math.random() < 0.6) {
-      this.spawnPositiveLoot(stain.x, stain.y);
-    } else {
+    const tier = STONE_TIERS.find(t => t.type === stain.stoneType)!;
+
+    // 掉落拾取物
+    this.spawnStoneLoot(stain.x, stain.y, stain.stoneType, stain.stoneValue);
+
+    // 诅咒石 → 额外触发负面效果
+    if (stain.cursed) {
       this.triggerNegativeEffect(stain.x, stain.y);
+    }
+
+    // 揭晓飘字
+    if (tier.isUtility) {
+      this.showClue(stain.x, stain.y, `揭晓：${tier.name}！`, '#ff4444');
+    } else {
+      const valText = stain.stoneValue >= 800 ? `👑 ${tier.name}！价值 ${stain.stoneValue}！`
+                   : stain.stoneValue >= 200 ? `💎 ${tier.name}！价值 ${stain.stoneValue}！`
+                   : stain.stoneValue >= 80  ? `🟢 ${tier.name}！价值 ${stain.stoneValue}！`
+                   : `🪨 ${tier.name}，价值 ${stain.stoneValue}`;
+      const color = stain.stoneValue >= 800 ? '#00ff44'
+                  : stain.stoneValue >= 200 ? '#00cc44'
+                  : stain.stoneValue >= 80  ? '#44dd44'
+                  : '#aaaaaa';
+      this.showClue(stain.x, stain.y, valText, color);
     }
   }
 
   // ─── Loot ───────────────────────────────────────────────────
 
-  private spawnPositiveLoot(x: number, y: number) {
-    const totalWeight = POSITIVE_TABLE.reduce((s, e) => s + e.weight, 0);
-    let roll = Math.random() * totalWeight;
-    let chosen = POSITIVE_TABLE[0];
-    for (const entry of POSITIVE_TABLE) {
-      roll -= entry.weight;
-      if (roll <= 0) {
-        chosen = entry;
-        break;
-      }
-    }
-
-    const info = LOOT_INFO[chosen.type];
+  private spawnStoneLoot(x: number, y: number, type: LootType, value: number) {
+    const info = LOOT_INFO[type];
     const circle = this.add.circle(0, 0, 10, info.color);
     circle.setStrokeStyle(2, 0xffffff);
     const container = this.add.container(x, y, [circle]);
@@ -1068,14 +1179,11 @@ export class CleanupEvacScene extends Phaser.Scene {
 
     this.loots.push({
       x, y,
-      type: chosen.type,
-      value: chosen.value,
+      type,
+      value,
       collected: false,
       sprite: container,
     });
-
-    this.showMessage(`清扫完成！\n掉落: ${info.name}`);
-    this.time.delayedCall(1200, () => this.hideMessage());
   }
 
   private checkLootPickup() {
@@ -1104,6 +1212,43 @@ export class CleanupEvacScene extends Phaser.Scene {
         this.time.delayedCall(1000, () => this.hideMessage());
       }
     }
+  }
+
+  // ─── Abandon stone (止损) ──────────────────────────────────
+
+  private tryAbandonStone() {
+    let nearest: Stain | null = null;
+    let nearestDist = 80;
+
+    for (const stain of this.stains) {
+      if (stain.cleaned) continue;
+      if (stain.revealStage === 0 || stain.revealStage === 3) continue;
+
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, stain.x, stain.y);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = stain;
+      }
+    }
+
+    if (!nearest) return;
+
+    const tier = STONE_TIERS.find(t => t.type === nearest.stoneType)!;
+
+    if (tier.isUtility) {
+      // 药石/盾石 → 放弃得0价值
+      this.showClue(nearest.x, nearest.y, '放弃了…看不出是什么', '#888888');
+    } else {
+      const fraction = nearest.revealStage === 2 ? 0.5 : 0.2;
+      const partial = Math.round(nearest.stoneValue * fraction);
+      this.score += partial;
+      this.updateScoreUI();
+      this.showClue(nearest.x, nearest.y, `止损！+${partial}`, '#ffdd00');
+    }
+
+    nearest.cleaned = true;
+    nearest.sprite.setVisible(false);
+    nearest.innerSprite.setVisible(false);
   }
 
   // ─── Negative effects ───────────────────────────────────────
