@@ -33,13 +33,6 @@ const LOOT_COLORS: Record<string, number> = {
   shield: 0x44aaff,
 };
 
-const LOOT_LABELS: Record<string, string> = {
-  gold: '🟡',
-  gem: '💎',
-  medkit: '🔴',
-  shield: '🛡',
-};
-
 const VIEW_RADIUS = 180;
 const SCREEN_W = 800;
 const SCREEN_H = 600;
@@ -252,7 +245,7 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
     const state = this.room.state as any;
 
     // Obstacles
-    state.obstacles.onAdd((obs: any, id: string) => {
+    state.obstacles.onAdd((obs: any, _id: string) => {
       this.obstacles.push({ x: obs.x, y: obs.y, w: obs.w, h: obs.h });
       this.rebuildMap();
     });
@@ -642,7 +635,7 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
 
   // ─── Update loop ────────────────────────────────────────────
 
-  update(time: number, delta: number) {
+  update(_time: number, delta: number) {
     if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
       if (this.room) this.room.leave();
       this.scene.start('MenuScene');
@@ -778,14 +771,14 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
     this.drawStaminaBar(myPlayer.stamina, myPlayer.isSprinting || (this.shiftKey.isDown && (inputX !== 0 || inputY !== 0)));
 
     // Revive prompt
-    let nearDowned: string | null = null;
+    const nearDowned: string[] = [];
     this.room.state.players.forEach((p: any, sid: string) => {
       if (sid === this.mySessionId || p.state !== 'down') return;
       const dist = Math.hypot(p.x - myPlayer.x, p.y - myPlayer.y);
-      if (dist < 50) nearDowned = sid;
+      if (dist < 50) nearDowned.push(sid);
     });
-    if (nearDowned && myPlayer.state === 'alive') {
-      this.revivePrompt.setText(`按 E 复活队友 ${nearDowned.slice(0, 4)}!`).setVisible(true);
+    if (nearDowned.length > 0 && myPlayer.state === 'alive') {
+      this.revivePrompt.setText(`按 E 复活队友 ${nearDowned.slice(0, 4).join(', ')}!`).setVisible(true);
     } else {
       this.revivePrompt.setVisible(false);
     }
