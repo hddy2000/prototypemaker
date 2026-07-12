@@ -95,30 +95,29 @@ export class MenuScene extends Phaser.Scene {
     },
     {
       key: 'CleanupEvacScene',
-      name: '清扫撤离',
-      description: '进入黑暗废弃建筑，用水枪清扫污渍！清扫后随机掉落宝物或触发怪物，收集价值1000后到撤离点撤离！',
+      name: '赌石撤离',
+      description: '进入黑暗废弃建筑，用水枪清洗石皮！逐步揭晓内部价值——废料还是帝王绿？洗到一半可右键止损！小心诅咒石触发怪物！收集价值1000后撤离！',
     },
     {
       key: 'BlindBoxHorrorScene',
       name: '盲盒惊魂',
       description: '携带盲盒探索三层鬼屋，找到破解台开盒：可能获得财宝、召唤怪物或BOSS！收集财宝逃离！',
     },
+    {
+      key: 'CleanupMultiplayerScene',
+      name: '多人清扫撤离',
+      description: '多人合作版！一起用水枪清扫污渍收集宝物，团队价值达1000后到撤离点撤离！被怪物打倒后倒地，队友靠近按E复活！Shift疾跑 | E躲藏/复活/撤离 | 左键喷射',
+    },
     // Add new prototypes here
   ];
 
   private selectedIndex = 0;
-  private menuItems: Phaser.GameObjects.Text[] = [];
+  private gridCells: Phaser.GameObjects.Container[] = [];
 
-  // Scrollable list state
-  private scrollOffset = 0;
-  private scrollContainer!: Phaser.GameObjects.Container;
-  private scrollbarThumb!: Phaser.GameObjects.Rectangle;
-  private readonly viewportX = 80;
-  private readonly viewportY = 170;
-  private readonly viewportW = 640;
-  private readonly viewportH = 340;
-  private readonly itemHeight = 64;
-  private readonly trackX = this.viewportX + this.viewportW + 14;
+  // Grid layout constants
+  private readonly gridMarginX = 30;
+  private readonly gridTop = 110;
+  private readonly gridBottomMargin = 30;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -126,91 +125,70 @@ export class MenuScene extends Phaser.Scene {
 
   create() {
     // Clear stale references from previous scene instance (scene.restart/start reuses the same object)
-    this.menuItems = [];
+    this.gridCells = [];
     this.selectedIndex = 0;
-    this.scrollOffset = 0;
 
     // Title
-    this.add.text(400, 80, 'Prototype Maker', {
-      fontSize: '48px',
+    this.add.text(400, 40, 'Prototype Maker', {
+      fontSize: '32px',
       color: '#ffffff',
     }).setOrigin(0.5);
 
-    this.add.text(400, 130, '选择一个原型：', {
-      fontSize: '20px',
+    this.add.text(400, 75, '选择一个原型：', {
+      fontSize: '14px',
       color: '#aaaaaa',
     }).setOrigin(0.5);
 
-    // Viewport background + border
-    this.add.rectangle(
-      this.viewportX + this.viewportW / 2,
-      this.viewportY + this.viewportH / 2,
-      this.viewportW, this.viewportH,
-      0x111122, 0.4,
-    );
-    this.add.rectangle(
-      this.viewportX + this.viewportW / 2,
-      this.viewportY + this.viewportH / 2,
-      this.viewportW, this.viewportH,
-    ).setStrokeStyle(1, 0x333355, 0.6);
+    // Compute dynamic grid layout
+    const layout = this.computeGrid();
+    const { cols, cellW, cellH, nameFontSize, descFontSize } = layout;
 
-    // Clip mask: only render items inside the viewport rectangle
-    const maskShape = this.make.graphics();
-    maskShape.fillStyle(0xffffff);
-    maskShape.fillRect(this.viewportX, this.viewportY, this.viewportW, this.viewportH);
-    const mask = maskShape.createGeometryMask();
+    const gap = 4;
+    const gridLeft = this.gridMarginX;
+    const gridTop = this.gridTop;
 
-    this.scrollContainer = this.add.container(0, 0);
-    this.scrollContainer.setMask(mask);
-
-    // Scrollbar track
-    this.add.rectangle(
-      this.trackX,
-      this.viewportY + this.viewportH / 2,
-      6, this.viewportH,
-      0x333344,
-    ).setOrigin(0.5);
-
-    // Scrollbar thumb (draggable)
-    this.scrollbarThumb = this.add.rectangle(
-      this.trackX, this.viewportY, 6, 100, 0x6688aa,
-    ).setOrigin(0.5, 0);
-    this.scrollbarThumb.setInteractive({ useHandCursor: true });
-    this.input.setDraggable(this.scrollbarThumb);
-    this.scrollbarThumb.on('drag', (_pointer: Phaser.Input.Pointer, _x: number, y: number) => {
-      const contentHeight = this.prototypes.length * this.itemHeight;
-      if (contentHeight <= this.viewportH) return;
-      const thumbH = Math.max(30, this.viewportH * (this.viewportH / contentHeight));
-      const scrollRange = this.viewportH - thumbH;
-      const clampedY = Phaser.Math.Clamp(y, this.viewportY, this.viewportY + scrollRange);
-      this.scrollOffset = scrollRange > 0
-        ? ((clampedY - this.viewportY) / scrollRange) * this.maxScroll()
-        : 0;
-      this.updateScroll();
-    });
-
-    // Build menu items into the scroll container
+    // Build grid cells
     this.prototypes.forEach((proto, index) => {
-      const y = this.viewportY + index * this.itemHeight;
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = gridLeft + col * cellW;
+      const y = gridTop + row * cellH;
 
-      const nameText = this.add.text(this.viewportX + 20, y, proto.name, {
-        fontSize: '24px',
-        color: '#ffffff',
-      });
+      const cell = this.add.container(x, y);
 
-      const descText = this.add.text(this.viewportX + 20, y + 30, proto.description, {
-        fontSize: '14px',
-        color: '#888888',
-      });
+      // Background (interactive hitbox)
+      const bg = this.add.rectangle(
+        cellW / 2, cellH / 2,
+        cellW - gap, cellH - gap,
+        0x111122, 0.6,
+      );
+      bg.setStrokeStyle(1, 0x333355, 0.6);
+      bg.setInteractive({ useHandCursor: true });
+      cell.add(bg);
 
-      this.scrollContainer.add(nameText);
-      this.scrollContainer.add(descText);
-      this.menuItems.push(nameText);
+      // Name text
+      const nameText = this.add.text(
+        8, 4,
+        proto.name,
+        { fontSize: `${nameFontSize}px`, color: '#ffffff', fontStyle: 'bold' },
+      );
+      cell.add(nameText);
 
-      // Make clickable
-      nameText.setInteractive({ useHandCursor: true });
-      descText.setInteractive({ useHandCursor: true });
+      // Description text (word-wrapped to fit cell width)
+      const descText = this.add.text(
+        8, 4 + nameFontSize + 4,
+        proto.description,
+        {
+          fontSize: `${descFontSize}px`,
+          color: '#888888',
+          wordWrap: { width: cellW - gap - 16, useAdvancedWrap: true },
+        },
+      );
+      cell.add(descText);
 
+      this.gridCells.push(cell);
+
+      // Click handler
       const launchScene = () => {
         if (proto.key === 'CleanupScene') {
           this.showCleanupIntro();
@@ -223,26 +201,18 @@ export class MenuScene extends Phaser.Scene {
         }
       };
 
-      nameText.on('pointerdown', launchScene);
-      descText.on('pointerdown', launchScene);
-
-      nameText.on('pointerover', () => {
+      bg.on('pointerdown', launchScene);
+      bg.on('pointerover', () => {
         this.selectedIndex = index;
         this.updateSelection();
       });
     });
 
     // Instructions
-    this.add.text(400, 560, '↑↓ 选择 • 回车 启动 • 鼠标滚轮 / 拖动滚动条 滚动', {
-      fontSize: '16px',
+    this.add.text(400, 585, '↑↓←→ 选择 • 回车 启动 • 点击进入', {
+      fontSize: '14px',
       color: '#666666',
     }).setOrigin(0.5);
-
-    // Mouse wheel scrolling
-    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _over: Phaser.GameObjects.GameObject, _deltaX: number, deltaY: number) => {
-      this.scrollOffset = Phaser.Math.Clamp(this.scrollOffset + deltaY * 0.5, 0, this.maxScroll());
-      this.updateScroll();
-    });
 
     // Keyboard input
     const cursors = this.input.keyboard!.createCursorKeys();
@@ -262,63 +232,51 @@ export class MenuScene extends Phaser.Scene {
     });
 
     cursors.up!.on('down', () => {
-      this.selectedIndex = Phaser.Math.Wrap(this.selectedIndex - 1, 0, this.prototypes.length);
-      this.ensureVisible();
+      this.selectedIndex = Phaser.Math.Wrap(this.selectedIndex - cols, 0, this.prototypes.length);
       this.updateSelection();
     });
 
     cursors.down!.on('down', () => {
-      this.selectedIndex = Phaser.Math.Wrap(this.selectedIndex + 1, 0, this.prototypes.length);
-      this.ensureVisible();
+      this.selectedIndex = Phaser.Math.Wrap(this.selectedIndex + cols, 0, this.prototypes.length);
       this.updateSelection();
     });
 
-    this.updateScroll();
+    cursors.left!.on('down', () => {
+      this.selectedIndex = Phaser.Math.Wrap(this.selectedIndex - 1, 0, this.prototypes.length);
+      this.updateSelection();
+    });
+
+    cursors.right!.on('down', () => {
+      this.selectedIndex = Phaser.Math.Wrap(this.selectedIndex + 1, 0, this.prototypes.length);
+      this.updateSelection();
+    });
+
     this.updateSelection();
   }
 
-  private maxScroll(): number {
-    return Math.max(0, this.prototypes.length * this.itemHeight - this.viewportH);
-  }
-
-  private updateScroll() {
-    // Move container so that scrollOffset maps to the top of the viewport
-    this.scrollContainer.y = -this.scrollOffset;
-
-    // Update scrollbar thumb
-    const contentHeight = this.prototypes.length * this.itemHeight;
-    if (contentHeight > this.viewportH) {
-      const thumbH = Math.max(30, this.viewportH * (this.viewportH / contentHeight));
-      const scrollRange = this.viewportH - thumbH;
-      const thumbY = this.viewportY + (this.maxScroll() > 0
-        ? (this.scrollOffset / this.maxScroll()) * scrollRange
-        : 0);
-      this.scrollbarThumb.setPosition(this.trackX, thumbY);
-      this.scrollbarThumb.setSize(6, thumbH);
-      this.scrollbarThumb.setVisible(true);
-    } else {
-      this.scrollbarThumb.setVisible(false);
-    }
-  }
-
-  /** Scroll just enough to keep the selected item inside the viewport */
-  private ensureVisible() {
-    const itemTop = this.selectedIndex * this.itemHeight;
-    const itemBottom = itemTop + this.itemHeight;
-    if (itemTop < this.scrollOffset) {
-      this.scrollOffset = itemTop;
-    } else if (itemBottom > this.scrollOffset + this.viewportH) {
-      this.scrollOffset = itemBottom - this.viewportH;
-    }
-    this.updateScroll();
+  /** Compute grid columns/rows/cell-size from prototype count */
+  private computeGrid() {
+    const n = this.prototypes.length;
+    const cols = Math.ceil(Math.sqrt(n));
+    const rows = Math.ceil(n / cols);
+    const availW = 800 - this.gridMarginX * 2;
+    const availH = 600 - this.gridTop - this.gridBottomMargin;
+    const cellW = availW / cols;
+    const cellH = availH / rows;
+    const nameFontSize = Math.min(20, Math.max(10, Math.floor(cellH * 0.22)));
+    const descFontSize = Math.min(12, Math.max(8, Math.floor(cellH * 0.14)));
+    return { cols, rows, cellW, cellH, nameFontSize, descFontSize };
   }
 
   private updateSelection() {
-    this.menuItems.forEach((item, index) => {
+    this.gridCells.forEach((cell, index) => {
+      const bg = cell.getAt(0) as Phaser.GameObjects.Rectangle;
       if (index === this.selectedIndex) {
-        item.setColor('#00ff00');
+        bg.setFillStyle(0x223366, 0.8);
+        bg.setStrokeStyle(2, 0x66aaff, 1);
       } else {
-        item.setColor('#ffffff');
+        bg.setFillStyle(0x111122, 0.6);
+        bg.setStrokeStyle(1, 0x333355, 0.6);
       }
     });
   }
