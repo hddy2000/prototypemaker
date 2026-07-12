@@ -303,19 +303,101 @@ export class PinballScene extends Phaser.Scene {
   private powerBarBg!: Phaser.GameObjects.Rectangle;
   private durabilityText!: Phaser.GameObjects.Text;
 
+  // ── 音效系统 ──
+  private bgm!: Phaser.Sound.BaseSound;
+  private audioLoaded = false;
+
   constructor() {
     super({ key: 'PinballScene' });
   }
 
   // ── 生命周期 ────────────────────────────────────────────────────────────
 
+  preload() {
+    // 加载音效资源
+    this.load.audio('bgm', 'assets/audio/弹珠bgm.mp3');
+    this.load.audio('crash', 'assets/audio/爆裂撞击.mp3');     // 爆裂撞击
+    this.load.audio('metal', 'assets/audio/金属脆响.mp3');      // 金属脆响
+    this.load.audio('electric', 'assets/audio/电子碰撞.mp3');   // 电子碰撞
+    this.load.audio('muffled', 'assets/audio/闷响撞击.mp3');    // 闷响撞击（已破坏部位）
+    this.load.audio('whisper', 'assets/audio/古神低语.mp3');    // 古神低语
+    this.load.audio('bleed', 'assets/audio/爆血.mp3');         // 爆血
+    this.load.audio('victory', 'assets/audio/胜利.mp3');       // 胜利
+  }
+
   create() {
+    // 场景关闭时停止BGM
+    this.events.once('shutdown', () => {
+      if (this.bgm && this.bgm.isPlaying) this.bgm.stop();
+    });
+
     if (this.showingLevelSelect) {
       // 显示选关界面
       this.showLevelSelect();
     } else {
       // 直接初始化游戏（通关后进入下一关）
       this.initGame();
+    }
+  }
+
+  // ── 音效系统 ────────────────────────────────────────────────────────────
+
+  private initAudio() {
+    if (!this.audioLoaded) {
+      // 第一次进入游戏时，等待音频解码完成
+      this.audioLoaded = true;
+    }
+
+    // 播放BGM（循环，音量适中）
+    if (this.bgm && this.bgm.isPlaying) {
+      this.bgm.stop();
+    }
+    this.bgm = this.sound.add('bgm', { loop: true, volume: 0.3 });
+    this.bgm.play();
+
+    // 关卡开始时播放古神低语
+    this.sound.play('whisper', { volume: 0.6 });
+  }
+
+  // 播放碰撞音效（非心脏部位）
+  private playCollisionSound(organ: Organ | null) {
+    if (organ && (organ.destroyed || organ.darkened)) {
+      // 撞在已破坏/变暗的部位：闷响撞击
+      this.sound.play('muffled', { volume: 0.5 });
+      return;
+    }
+    // 正常部位：爆裂撞击 + 金属脆响，有时触发电子碰撞
+    this.sound.play('crash', { volume: 0.4 });
+    this.sound.play('metal', { volume: 0.3 });
+    // 30%概率触发电子碰撞
+    if (Math.random() < 0.3) {
+      this.time.delayedCall(50, () => {
+        this.sound.play('electric', { volume: 0.35 });
+      });
+    }
+  }
+
+  // 播放心脏命中音效
+  private playHeartHitSound() {
+    // 爆裂撞击 + 爆血
+    this.sound.play('crash', { volume: 0.6 });
+    this.sound.play('bleed', { volume: 0.5 });
+    // 30%概率触发古神低语（怪物吃痛的怒吼）
+    if (Math.random() < 0.3) {
+      this.time.delayedCall(100, () => {
+        this.sound.play('whisper', { volume: 0.7 });
+      });
+    }
+  }
+
+  // 播放Boss/眼球命中音效（L1/L2的Boss直接命中）
+  private playBossHitSound() {
+    this.sound.play('crash', { volume: 0.5 });
+    // 30%概率触发古神低语
+    if (Math.random() < 0.3) {
+      this.time.delayedCall(100, () => {
+        this.sound.play('whisper', { volume: 0.6 });
+      });
     }
   }
 
@@ -421,6 +503,9 @@ export class PinballScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0a0a0f');
     this.physics.world.setBounds(0, 0, GAME_W, GAME_H);
     this.physics.world.gravity.y = GRAVITY;
+
+    // ── 音效系统初始化 ──
+    this.initAudio();
 
     // 第三关：背景心跳脉动层
     if (this.level === 3) {
@@ -739,6 +824,9 @@ export class PinballScene extends Phaser.Scene {
     this.bossHitCooldown = BOSS_HIT_COOLDOWN;
     this.damageBall(1);
 
+    // ── 音效：Boss/眼球命中 ──
+    this.playBossHitSound();
+
     // 分裂弹珠：第一次弹射时分裂
     this.trySplitBall(this.ball, this.ballBody, this.ballType, false);
 
@@ -849,6 +937,9 @@ export class PinballScene extends Phaser.Scene {
     if (!this.heartExposed) return;  // 未暴露时不可攻击
     if (this.heartHitCooldown > 0) return;
     this.heartHitCooldown = HEART_HIT_COOLDOWN;
+
+    // ── 音效：心脏命中（爆裂撞击 + 爆血 + 30%古神低语）──
+    this.playHeartHitSound();
 
     // 分裂弹珠：第一次弹射时分裂
     this.trySplitBall(this.ball, this.ballBody, this.ballType, false);
@@ -970,6 +1061,8 @@ export class PinballScene extends Phaser.Scene {
 
   private hitRib(rib: Phaser.GameObjects.Arc, pupil: Phaser.GameObjects.Arc) {
     const organ = rib.getData('organRef') as Organ;
+    // ── 音效 ──
+    this.playCollisionSound(organ);
     if (!organ || organ.destroyed) return;
 
     // 弹射球（无论是否变暗都反弹）
@@ -1052,6 +1145,8 @@ export class PinballScene extends Phaser.Scene {
 
   private hitSpine(spine: Phaser.GameObjects.Arc) {
     const organ = spine.getData('organRef') as Organ;
+    // ── 音效 ──
+    this.playCollisionSound(organ);
     if (!organ || organ.destroyed) return;
 
     // 弹射球（无论是否变暗都反弹）
@@ -1148,6 +1243,8 @@ export class PinballScene extends Phaser.Scene {
 
   private hitFleshWall(wall: Phaser.GameObjects.Rectangle) {
     const organ = wall.getData('organRef') as Organ;
+    // ── 音效 ──
+    this.playCollisionSound(organ);
     if (!organ || organ.destroyed) return;
 
     // 向上弹射球（无论是否变暗都反弹）
@@ -1794,6 +1891,8 @@ export class PinballScene extends Phaser.Scene {
       if (!this.canHitObstacle(sling)) return;
       // 查找器官
       const organ = sling.getData('organRef') as Organ | null;
+      // ── 音效 ──
+      this.playCollisionSound(organ);
       // 弹射球
       const dir = x < GAME_W / 2 ? 1 : -1;
       this.ballBody.setVelocity(dir * 200, -500);
@@ -2003,6 +2102,9 @@ export class PinballScene extends Phaser.Scene {
   private hitBumper(bumper: Phaser.GameObjects.Arc, pupil: Phaser.GameObjects.Arc) {
     const organ = bumper.getData('organRef') as Organ | null;
 
+    // ── 音效 ──
+    this.playCollisionSound(organ);
+
     // 弹射球
     const angle = Phaser.Math.Angle.Between(
       bumper.x, bumper.y, this.ball.x, this.ball.y
@@ -2060,6 +2162,9 @@ export class PinballScene extends Phaser.Scene {
 
   private hitNail(nail: Phaser.GameObjects.Arc) {
     const organ = nail.getData('organRef') as Organ | null;
+
+    // ── 音效 ──
+    this.playCollisionSound(organ);
 
     // 钉子给球一个小弹力
     const dx = this.ball.x - nail.x;
@@ -2121,6 +2226,8 @@ export class PinballScene extends Phaser.Scene {
 
     // 通过 organRef 获取正确的器官
     const organ = grotesque.getData('organRef') as Organ | null;
+    // ── 音效 ──
+    this.playCollisionSound(organ);
     if (organ && !organ.destroyed && !organ.darkened) {
       const damage = this.getBallDamage();
       organ.hp -= damage;
@@ -2780,6 +2887,8 @@ export class PinballScene extends Phaser.Scene {
           // L3: 心脏碰撞
           if (this.heartHitCooldown > 0) return;
           this.heartHitCooldown = HEART_HIT_COOLDOWN;
+          // ── 音效：心脏命中 ──
+          this.playHeartHitSound();
           this.heartHp -= HEART_BOSS_DAMAGE;
           this.bossHp -= HEART_BOSS_DAMAGE;
           this.score += HEART_HIT_SCORE;
@@ -2810,6 +2919,8 @@ export class PinballScene extends Phaser.Scene {
           // L1/L2: Boss碰撞
           if (this.bossHitCooldown > 0) return;
           this.bossHitCooldown = BOSS_HIT_COOLDOWN;
+          // ── 音效：Boss命中 ──
+          this.playBossHitSound();
           this.bossHp -= DIRECT_BOSS_DAMAGE;
           this.score += BOSS_HIT_SCORE;
           this.damageExtraBall(this.findExtraBall(ballObj), 1);
@@ -2836,6 +2947,8 @@ export class PinballScene extends Phaser.Scene {
       this.physics.add.collider(ballObj, b.obj, () => {
         if (!this.canHitObstacle(b.obj)) return;
         const organ = b.obj.getData('organRef') as Organ | null;
+        // ── 音效 ──
+        this.playCollisionSound(organ);
         // 弹射
         const angle = Phaser.Math.Angle.Between(b.obj.x, b.obj.y, ballObj.x, ballObj.y);
         b.pupil.x = b.obj.x + Math.cos(angle) * 8;
@@ -2874,6 +2987,8 @@ export class PinballScene extends Phaser.Scene {
       this.physics.add.collider(ballObj, n, () => {
         if (!this.canHitObstacle(n)) return;
         const organ = n.getData('organRef') as Organ | null;
+        // ── 音效 ──
+        this.playCollisionSound(organ);
         const dx = ballObj.x - n.x;
         const dy = ballObj.y - n.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -2905,6 +3020,8 @@ export class PinballScene extends Phaser.Scene {
       this.physics.add.collider(ballObj, s, () => {
         if (!this.canHitObstacle(s)) return;
         const organ = s.getData('organRef') as Organ | null;
+        // ── 音效 ──
+        this.playCollisionSound(organ);
         const dir = s.x < GAME_W / 2 ? 1 : -1;
         ballBody.setVelocity(dir * 200, -500);
         if (organ && !organ.destroyed && !organ.darkened) {
@@ -2929,6 +3046,8 @@ export class PinballScene extends Phaser.Scene {
       this.physics.add.collider(ballObj, g, () => {
         if (!this.canHitObstacle(g)) return;
         const organ = g.getData('organRef') as Organ | null;
+        // ── 音效 ──
+        this.playCollisionSound(organ);
         const dx = ballObj.x - g.x;
         const dist = Math.max(1, Math.abs(dx));
         let vx = (dx / dist) * 200;
@@ -3108,6 +3227,9 @@ export class PinballScene extends Phaser.Scene {
     this.levelClear = true;
     this.cameras.main.flash(500, 255, 255, 255);
 
+    // ── 音效：关卡结束时播放古神低语 ──
+    this.sound.play('whisper', { volume: 0.6 });
+
     // 清除所有子弹
     for (const bullet of this.bullets) {
       bullet.destroy();
@@ -3136,6 +3258,11 @@ export class PinballScene extends Phaser.Scene {
     if (this.isWon) return;
     this.isWon = true;
     this.cameras.main.flash(500, 255, 255, 255);
+
+    // ── 音效：胜利 ──
+    if (this.bgm && this.bgm.isPlaying) this.bgm.stop();
+    this.sound.play('victory', { volume: 0.7 });
+
     this.showMessage(
       '🎉🎉 你彻底逃脱了赌场的诅咒！\n\n按ESC返回菜单',
       999999
