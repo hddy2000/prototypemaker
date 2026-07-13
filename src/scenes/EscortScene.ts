@@ -11,19 +11,30 @@ interface Material {
 type MaterialType = 'iron' | 'crystal' | 'wood' | 'stone' | 'core';
 
 interface Monster {
-  sprite: Phaser.GameObjects.Rectangle;
+  sprite: Phaser.GameObjects.Container;
+  body: Phaser.GameObjects.Arc;
   speed: number;
   chaseSpeed: number;
   direction: Phaser.Math.Vector2;
   patrolTimer: number;
   isChasing: boolean;
   visionRange: number;
-  visionAngle: number;
-  territoryRadius: number;
   homeX: number;
   homeY: number;
   giveUpTimer: number;
   giveUpDuration: number;
+  alive: boolean;
+  isBoss: boolean;
+  bossDamage: number;
+}
+
+interface SafeRoom {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  centerX: number;
+  centerY: number;
 }
 
 interface Obstacle {
@@ -47,6 +58,7 @@ export class EscortScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle;
   private ball!: Phaser.GameObjects.Image; // 足球——玩家可推动/滚动
   private ballRadius = 14;
+  private ballAbsorbRange = 90; // 足球周围吸收材料的范围（无需碰撞即可吸收）
   private ballVx = 0;
   private ballVy = 0;
   private ballFriction = 0.985; // 每帧速度衰减
@@ -79,6 +91,7 @@ export class EscortScene extends Phaser.Scene {
   // Game objects
   private materials: Material[] = [];
   private monsters: Monster[] = [];
+  private safeRooms: SafeRoom[] = [];
   private exit!: Phaser.GameObjects.Rectangle;
 
   // Player stats
@@ -118,6 +131,7 @@ export class EscortScene extends Phaser.Scene {
     this.collectedMaterials.clear();
     this.materials = [];
     this.monsters = [];
+    this.safeRooms = [];
     this.obstacles = [];
     this.stamina = 100;
     this.isSprinting = false;
@@ -132,6 +146,7 @@ export class EscortScene extends Phaser.Scene {
     this.cam.setBounds(0, 0, this.mapWidth, this.mapHeight);
 
     this.generateObstacles();
+    this.createSafeRooms();
     this.drawMap();
     this.createPlayer();
     this.createBall();
@@ -144,7 +159,7 @@ export class EscortScene extends Phaser.Scene {
 
     this.cam.startFollow(this.player, true, 0.1, 0.1);
 
-    this.showMessage('把足球滚到材料上拾取！\n收集5种材料升级后滚到终点通关');
+    this.showMessage('把足球滚到材料上拾取！\n收集5种材料升级后滚到终点通关\n绿色房间可躲避怪物');
     this.time.delayedCall(3000, () => this.hideMessage());
   }
 
@@ -176,6 +191,66 @@ export class EscortScene extends Phaser.Scene {
     }
   }
 
+  // ─── Safe rooms (躲避小房间) ─────────────────────────────────
+
+  private createSafeRooms() {
+    this.safeRooms = [];
+
+    const roomCount = 4;
+    const roomW = 160;
+    const roomH = 120;
+    const wallThick = 16;
+    const doorWidth = 50;
+
+    let placed = 0;
+    let attempts = 0;
+
+    while (placed < roomCount && attempts < 500) {
+      attempts++;
+      const x = Phaser.Math.Between(150, this.mapWidth - 150 - roomW);
+      const y = Phaser.Math.Between(150, this.mapHeight - 150 - roomH);
+
+      // 避开起点和终点
+      const distToStart = Phaser.Math.Distance.Between(x + roomW / 2, y + roomH / 2, 80, 80);
+      const distToExit = Phaser.Math.Distance.Between(x + roomW / 2, y + roomH / 2, this.mapWidth - 80, this.mapHeight - 80);
+      if (distToStart < 350 || distToExit < 250) continue;
+
+      // 避免与已有安全房重叠
+      let overlap = false;
+      for (const r of this.safeRooms) {
+        if (x < r.x + r.w + 80 && x + roomW + 80 > r.x &&
+            y < r.y + r.h + 80 && y + roomH + 80 > r.y) {
+          overlap = true;
+          break;
+        }
+      }
+      if (overlap) continue;
+
+      const room: SafeRoom = {
+        x, y, w: roomW, h: roomH,
+        centerX: x + roomW / 2,
+        centerY: y + roomH / 2,
+      };
+      this.safeRooms.push(room);
+
+      // 建造四面墙，每面墙留一个门口
+      // 上墙（留中间门口）
+      this.obstacles.push({ x: room.x, y: room.y - wallThick, w: (roomW - doorWidth) / 2, h: wallThick });
+      this.obstacles.push({ x: room.x + (roomW + doorWidth) / 2, y: room.y - wallThick, w: (roomW - doorWidth) / 2, h: wallThick });
+      // 下墙
+      this.obstacles.push({ x: room.x, y: room.y + roomH, w: (roomW - doorWidth) / 2, h: wallThick });
+      this.obstacles.push({ x: room.x + (roomW + doorWidth) / 2, y: room.y + roomH, w: (roomW - doorWidth) / 2, h: wallThick });
+      // 左墙
+      this.obstacles.push({ x: room.x - wallThick, y: room.y, w: wallThick, h: (roomH - doorWidth) / 2 });
+      this.obstacles.push({ x: room.x - wallThick, y: room.y + (roomH + doorWidth) / 2, w: wallThick, h: (roomH - doorWidth) / 2 });
+      // 右墙
+      this.obstacles.push({ x: room.x + roomW, y: room.y, w: wallThick, h: (roomH - doorWidth) / 2 });
+      this.obstacles.push({ x: room.x + roomW, y: room.y + (roomH + doorWidth) / 2, w: wallThick, h: (roomH - doorWidth) / 2 });
+
+      placed++;
+    }
+  }
+
   private drawMap() {
     this.mapGraphics = this.add.graphics();
 
@@ -193,6 +268,16 @@ export class EscortScene extends Phaser.Scene {
     this.mapGraphics.fillStyle(0x333355, 1);
     for (const obs of this.obstacles) {
       this.mapGraphics.fillRect(obs.x, obs.y, obs.w, obs.h);
+    }
+
+    // 安全房地面（高亮显示，让玩家容易找到躲避处）
+    this.mapGraphics.fillStyle(0x1a3a1a, 0.6);
+    for (const room of this.safeRooms) {
+      this.mapGraphics.fillRect(room.x, room.y, room.w, room.h);
+    }
+    this.mapGraphics.lineStyle(2, 0x44ff44, 0.5);
+    for (const room of this.safeRooms) {
+      this.mapGraphics.strokeRect(room.x, room.y, room.w, room.h);
     }
 
     this.mapGraphics.lineStyle(2, 0x555577, 1);
@@ -424,30 +509,59 @@ export class EscortScene extends Phaser.Scene {
         continue;
       }
 
+      // 不生成在安全房内
+      if (this.isInsideSafeRoom(x, y)) {
+        attempts++;
+        continue;
+      }
+
       if (!this.isInsideObstacle(x, y, 12)) {
-        const isHunter = placed < 3;
-        const sprite = this.add.rectangle(x, y, 24, 24, isHunter ? 0xff00ff : 0xff8800);
-        sprite.setDepth(5);
+        const isBoss = placed < 2; // 前2只为Boss怪
+        const size = isBoss ? 24 : 14;
+        const color = isBoss ? 0xff00ff : 0xff8800;
+        const alpha = isBoss ? 0.9 : 0.7;
+
+        const container = this.add.container(x, y);
+        container.setDepth(5);
+        const body = this.add.arc(0, 0, size, 0, 360, false, color, alpha);
+        container.add(body);
+
+        if (isBoss) {
+          const crown = this.add.text(0, -size - 5, '👑', { fontSize: '16px' }).setOrigin(0.5);
+          container.add(crown);
+        }
 
         this.monsters.push({
-          sprite,
-          speed: isHunter ? 40 : 30,
-          chaseSpeed: isHunter ? 150 : 110,
-          direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
-          patrolTimer: Phaser.Math.Between(0, 3000),
+          sprite: container,
+          body,
+          speed: isBoss ? 40 : 30,
+          chaseSpeed: isBoss ? 100 : 70,
+          direction: new Phaser.Math.Vector2(Phaser.Math.Between(-1, 1), Phaser.Math.Between(-1, 1)).normalize(),
+          patrolTimer: 0,
           isChasing: false,
-          visionRange: isHunter ? 200 : 140,
-          visionAngle: Math.PI / 3,
-          territoryRadius: isHunter ? 600 : 300,
+          visionRange: isBoss ? 300 : 200,
           homeX: x,
           homeY: y,
           giveUpTimer: 0,
-          giveUpDuration: isHunter ? 4000 : 2500,
+          giveUpDuration: isBoss ? 5000 : 3000,
+          alive: true,
+          isBoss,
+          bossDamage: isBoss ? 40 : 15,
         });
         placed++;
       }
       attempts++;
     }
+  }
+
+  private isInsideSafeRoom(x: number, y: number): boolean {
+    for (const room of this.safeRooms) {
+      if (x >= room.x && x <= room.x + room.w &&
+          y >= room.y && y <= room.y + room.h) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // ─── Exit ─────────────────────────────────────────────────────
@@ -788,112 +902,96 @@ export class EscortScene extends Phaser.Scene {
     return false;
   }
 
-  // ─── Monster AI ───────────────────────────────────────────────
+  // ─── Monster AI (BlindBoxHorror 风格) ────────────────────────
 
   private updateMonsters(delta: number) {
-    const dt = delta / 1000;
-
     for (const monster of this.monsters) {
+      if (!monster.alive || !monster.sprite.visible) continue;
+
       const distToPlayer = Phaser.Math.Distance.Between(
-        monster.sprite.x, monster.sprite.y,
-        this.player.x, this.player.y
+        this.player.x, this.player.y,
+        monster.sprite.x, monster.sprite.y
       );
 
-      const canSee = this.monsterCanSeePlayer(monster, distToPlayer);
-
-      if (canSee) {
+      // 进入视野范围 → 开始追击
+      if (distToPlayer < monster.visionRange && !monster.isChasing) {
         monster.isChasing = true;
         monster.giveUpTimer = monster.giveUpDuration;
-      } else if (monster.giveUpTimer > 0) {
-        monster.giveUpTimer -= delta;
-        if (monster.giveUpTimer <= 0) {
-          monster.isChasing = false;
-        }
-      }
-
-      const distFromHome = Phaser.Math.Distance.Between(
-        monster.sprite.x, monster.sprite.y,
-        monster.homeX, monster.homeY
-      );
-      if (monster.isChasing && distFromHome > monster.territoryRadius) {
-        monster.isChasing = false;
-        monster.giveUpTimer = 0;
       }
 
       if (monster.isChasing) {
+        // 追击：朝玩家移动
         const dir = new Phaser.Math.Vector2(
           this.player.x - monster.sprite.x,
           this.player.y - monster.sprite.y
         ).normalize();
+        monster.sprite.x += dir.x * monster.chaseSpeed * delta / 1000;
+        monster.sprite.y += dir.y * monster.chaseSpeed * delta / 1000;
 
-        const newX = monster.sprite.x + dir.x * monster.chaseSpeed * dt;
-        const newY = monster.sprite.y + dir.y * monster.chaseSpeed * dt;
-
-        if (!this.isObstacleAt(newX, monster.sprite.y, 11)) {
-          monster.sprite.x = newX;
-        }
-        if (!this.isObstacleAt(monster.sprite.x, newY, 11)) {
-          monster.sprite.y = newY;
+        // 放弃条件：超时 或 超出视野1.5倍
+        monster.giveUpTimer -= delta;
+        if (monster.giveUpTimer <= 0 || distToPlayer > monster.visionRange * 1.5) {
+          monster.isChasing = false;
         }
       } else {
-        monster.patrolTimer += delta;
-        if (monster.patrolTimer > 3000) {
-          monster.patrolTimer = 0;
-          const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-          monster.direction.set(Math.cos(angle), Math.sin(angle));
+        // 巡逻：随机方向移动
+        monster.sprite.x += monster.direction.x * monster.speed * delta / 1000;
+        monster.sprite.y += monster.direction.y * monster.speed * delta / 1000;
+
+        monster.patrolTimer -= delta;
+        if (monster.patrolTimer <= 0) {
+          monster.direction = new Phaser.Math.Vector2(
+            Phaser.Math.Between(-1, 1),
+            Phaser.Math.Between(-1, 1)
+          ).normalize();
+          monster.patrolTimer = Phaser.Math.Between(2000, 5000);
         }
 
-        if (distFromHome > monster.territoryRadius * 0.8) {
-          const toHome = new Phaser.Math.Vector2(
+        // 离家太远 → 朝家走
+        const distToHome = Phaser.Math.Distance.Between(
+          monster.homeX, monster.homeY,
+          monster.sprite.x, monster.sprite.y
+        );
+        if (distToHome > 300) {
+          const dir = new Phaser.Math.Vector2(
             monster.homeX - monster.sprite.x,
             monster.homeY - monster.sprite.y
           ).normalize();
-          monster.direction.lerp(toHome, 0.1).normalize();
+          monster.direction = dir;
         }
+      }
 
-        const newX = monster.sprite.x + monster.direction.x * monster.speed * dt;
-        const newY = monster.sprite.y + monster.direction.y * monster.speed * dt;
+      // 障碍物碰撞反弹
+      if (this.isObstacleAt(monster.sprite.x, monster.sprite.y, 0)) {
+        monster.direction = new Phaser.Math.Vector2(-monster.direction.x, -monster.direction.y);
+        monster.sprite.x -= monster.direction.x * 10;
+        monster.sprite.y -= monster.direction.y * 10;
+      }
 
-        if (!this.isObstacleAt(newX, monster.sprite.y, 11)) {
-          monster.sprite.x = newX;
-        } else {
-          monster.direction.x *= -1;
-        }
-        if (!this.isObstacleAt(monster.sprite.x, newY, 11)) {
-          monster.sprite.y = newY;
-        } else {
-          monster.direction.y *= -1;
+      // 不进入安全房：如果怪物在安全房内，推出到门口外
+      if (this.isInsideSafeRoom(monster.sprite.x, monster.sprite.y)) {
+        // 朝最近的房间边缘推出
+        const room = this.findSafeRoomAt(monster.sprite.x, monster.sprite.y);
+        if (room) {
+          const dx = monster.sprite.x - room.centerX;
+          const dy = monster.sprite.y - room.centerY;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          monster.sprite.x = room.centerX + (dx / len) * (room.w / 2 + 20);
+          monster.sprite.y = room.centerY + (dy / len) * (room.h / 2 + 20);
+          monster.isChasing = false; // 进房后放弃追击
         }
       }
     }
   }
 
-  private monsterCanSeePlayer(monster: Monster, distToPlayer: number): boolean {
-    if (distToPlayer > monster.visionRange) return false;
-
-    const proximitySense = 60;
-
-    if (monster.visionAngle > 0 && distToPlayer > proximitySense) {
-      const angleToPlayer = Math.atan2(
-        this.player.y - monster.sprite.y,
-        this.player.x - monster.sprite.x
-      );
-      let facingAngle = Math.atan2(monster.direction.y, monster.direction.x);
-      if (monster.isChasing) {
-        facingAngle = angleToPlayer;
+  private findSafeRoomAt(x: number, y: number): SafeRoom | null {
+    for (const room of this.safeRooms) {
+      if (x >= room.x && x <= room.x + room.w &&
+          y >= room.y && y <= room.y + room.h) {
+        return room;
       }
-
-      let diff = Math.abs(angleToPlayer - facingAngle);
-      while (diff > Math.PI) diff = Math.abs(diff - Math.PI * 2);
-      if (diff > monster.visionAngle) return false;
     }
-
-    if (distToPlayer > proximitySense &&
-        this.lineBlockedByObstacle(monster.sprite.x, monster.sprite.y, this.player.x, this.player.y)) {
-      return false;
-    }
-
-    return true;
+    return null;
   }
 
   // ─── Pickup & combat ──────────────────────────────────────────
@@ -902,41 +1000,70 @@ export class EscortScene extends Phaser.Scene {
     for (const mat of this.materials) {
       if (mat.collected) continue;
 
-      // 拾取改为：足球滚到材料位置碰撞拾取（而非主角跑过去拾取）
+      // 足球周围一定范围内即可吸收材料（无需直接碰撞）
       const dist = Phaser.Math.Distance.Between(this.ball.x, this.ball.y, mat.x, mat.y);
+      const absorbRadius = this.ballRadius + this.ballAbsorbRange;
+
       if (dist < this.ballRadius + 16) {
-        mat.collected = true;
-        mat.sprite.setVisible(false);
-        this.tweens.killTweensOf(mat.sprite);
-        this.collectedMaterials.add(mat.type);
+        // 直接接触 → 立即吸收
+        this.collectMaterial(mat);
+      } else if (dist < absorbRadius) {
+        // 在吸收范围内 → 磁力吸附：把材料拉向足球，靠近后吸收
+        const pullSpeed = 350;
+        const dx = this.ball.x - mat.x;
+        const dy = this.ball.y - mat.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const moveX = (dx / len) * pullSpeed * (this.game.loop.delta / 1000);
+        const moveY = (dy / len) * pullSpeed * (this.game.loop.delta / 1000);
+        mat.x += moveX;
+        mat.y += moveY;
+        mat.sprite.x = mat.x;
+        mat.sprite.y = mat.y;
 
-        const info = MATERIAL_INFO[mat.type];
-        const count = this.collectedMaterials.size;
-        this.updateMaterialsUI();
-
-        if (count >= 5) {
-          this.showMessage(`收集到 ${info.name}！\n足球进化为完全体！\n前往终点通关！`);
-        } else {
-          this.showMessage(`收集到 ${info.name}！\n(${count}/5)`);
+        // 拉近到接触距离 → 吸收
+        const newDist = Phaser.Math.Distance.Between(this.ball.x, this.ball.y, mat.x, mat.y);
+        if (newDist < this.ballRadius + 16) {
+          this.collectMaterial(mat);
         }
-        this.time.delayedCall(2000, () => this.hideMessage());
       }
     }
+  }
+
+  private collectMaterial(mat: Material) {
+    if (mat.collected) return;
+    mat.collected = true;
+    mat.sprite.setVisible(false);
+    this.tweens.killTweensOf(mat.sprite);
+    this.collectedMaterials.add(mat.type);
+
+    const info = MATERIAL_INFO[mat.type];
+    const count = this.collectedMaterials.size;
+    this.updateMaterialsUI();
+
+    if (count >= 5) {
+      this.showMessage(`收集到 ${info.name}！\n足球进化为完全体！\n前往终点通关！`);
+    } else {
+      this.showMessage(`收集到 ${info.name}！\n(${count}/5)`);
+    }
+    this.time.delayedCall(2000, () => this.hideMessage());
   }
 
   private checkMonsterCollision() {
     if (this.damageCooldown > 0) return;
 
     for (const monster of this.monsters) {
+      if (!monster.alive) continue;
+
       const dist = Phaser.Math.Distance.Between(
         this.player.x, this.player.y,
         monster.sprite.x, monster.sprite.y
       );
 
-      if (dist < 30) {
-        this.health -= 15;
+      const hitRange = monster.isBoss ? 34 : 24;
+      if (dist < hitRange) {
+        this.health -= monster.bossDamage;
         this.healthText.setText(`生命: ${this.health}`);
-        this.damageCooldown = 800;
+        this.damageCooldown = 1000;
 
         // 击退
         const kx = this.player.x - monster.sprite.x;

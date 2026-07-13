@@ -101,6 +101,12 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
   }
 
   async create() {
+    // Clean up previous room connection (scene may restart without proper leave)
+    if (this.room) {
+      try { await this.room.leave(); } catch { /* ignore */ }
+      this.room = null as any;
+    }
+
     // Reset all state
     this.playerRenders.clear();
     this.monsterRenders.clear();
@@ -110,6 +116,8 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
     this.observedMonsters.clear();
     this.observedStains.clear();
     this.observedLoots.clear();
+    this.obstacles = [];
+    this.hideSpots = [];
     this.mapBuilt = false;
     this.isSpraying = false;
     this.aimAngle = 0;
@@ -674,8 +682,9 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
     // Aim angle
     const pointer = this.input.activePointer;
     const cam = this.cameras.main;
-    const mouseWorldX = pointer.x + cam.scrollX;
-    const mouseWorldY = pointer.y + cam.scrollY;
+    // NOTE: Use cam.worldView (not cam.scrollX/Y) because Phaser 3.90 scrollX != worldView.x when zoom != 1
+    const mouseWorldX = pointer.x / cam.zoom + cam.worldView.x;
+    const mouseWorldY = pointer.y / cam.zoom + cam.worldView.y;
     this.aimAngle = Math.atan2(mouseWorldY - myPlayer.y, mouseWorldX - myPlayer.x);
 
     // Send move
@@ -762,8 +771,9 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
 
     // Fog
     if (this.fogImage && this.fogCanvas) {
-      const screenX = myPlayer.x - cam.scrollX;
-      const screenY = myPlayer.y - cam.scrollY;
+      // NOTE: Use cam.worldView (not cam.scrollX/Y) because Phaser 3.90 scrollX != worldView.x when zoom != 1
+      const screenX = (myPlayer.x - cam.worldView.x) * cam.zoom;
+      const screenY = (myPlayer.y - cam.worldView.y) * cam.zoom;
       this.drawFog(screenX, screenY, myPlayer.blindTimer > 0);
     }
 
