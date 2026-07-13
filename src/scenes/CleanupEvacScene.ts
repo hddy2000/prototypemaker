@@ -40,6 +40,7 @@ interface Monster {
   lastSeenY: number;
   hasLastSeen: boolean; // 是否有最后已知位置
   searchingTimer: number; // 到达最后已知位置后的搜索时间
+  spawnDelay: number; // 刷出后原地停留时间（jumpscare 期间），>0 时不移动不追击
 }
 
 interface Stain {
@@ -126,6 +127,7 @@ const STAMINA_SPRINT_MIN = 5;  // 低于此值不能起跑
 // ─── Constants: hide & aggro ────────────────────────────────
 const HIDE_LOSE_AGGRO_TIME = 3000; // 躲藏后3秒才脱仇恨
 const HIDE_SPOT_RANGE = 40;       // 进入躲藏点的判定距离
+const SPAWN_DELAY_MS = 3000;      // 刷出的怪原地停留时间（jumpscare 后再追玩家）
 
 // ─── Scene ────────────────────────────────────────────────────
 
@@ -582,6 +584,7 @@ export class CleanupEvacScene extends Phaser.Scene {
           lastSeenY: 0,
           hasLastSeen: false,
           searchingTimer: 0,
+          spawnDelay: 0,
         });
         placed++;
       }
@@ -1317,7 +1320,7 @@ export class CleanupEvacScene extends Phaser.Scene {
             chaseSpeed: isHunter ? 185 : 170,
             direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
             patrolTimer: 0,
-            isChasing: true,
+            isChasing: false,
             visionRange: isHunter ? 220 : 160,
             visionAngle: Math.PI / 3,
             territoryRadius: 9999,
@@ -1333,12 +1336,48 @@ export class CleanupEvacScene extends Phaser.Scene {
             lastSeenY: y,
             hasLastSeen: true,
             searchingTimer: 0,
+            spawnDelay: SPAWN_DELAY_MS,
           });
           placed = true;
+          this.playSpawnJumpscare();
         }
       }
       attempts++;
     }
+  }
+
+  /** 刷怪跳脸：鬼图闪现 + 尖叫 + 震动 + 闪红（非致命） */
+  private playSpawnJumpscare() {
+    const cam = this.cameras.main;
+    this.sound.play('scream');
+
+    const jumpscare = this.add.image(cam.centerX, cam.centerY, 'ghost');
+    jumpscare.setScrollFactor(0);
+    jumpscare.setDepth(9999);
+    const scaleX = cam.width / jumpscare.width;
+    const scaleY = cam.height / jumpscare.height;
+    const coverScale = Math.max(scaleX, scaleY) * 1.1;
+    jumpscare.setScale(0);
+    jumpscare.setAlpha(1);
+
+    this.tweens.add({
+      targets: jumpscare,
+      scale: coverScale,
+      duration: 100,
+      ease: 'Back.easeOut',
+    });
+
+    cam.shake(400, 0.03);
+    cam.flash(150, 255, 0, 0, true);
+
+    this.time.delayedCall(600, () => {
+      this.tweens.add({
+        targets: jumpscare,
+        alpha: 0,
+        duration: 200,
+        onComplete: () => jumpscare.destroy(),
+      });
+    });
   }
 
   private updateNegativeEffects(delta: number) {
@@ -1367,6 +1406,19 @@ export class CleanupEvacScene extends Phaser.Scene {
         monster.attackCooldown -= delta;
         monster.sprite.setFillStyle(0xff4444); // 攻击停顿时变红
         continue;
+      }
+
+      // 刷出延迟：原地停留 SPAWN_DELAY_MS（jumpscare 期间），结束后才开始追玩家
+      if (monster.spawnDelay > 0) {
+        monster.spawnDelay -= delta;
+        const blink = Math.floor(monster.spawnDelay / 200) % 2 === 0;
+        monster.sprite.setFillStyle(blink ? 0xffff00 : (monster.isHunter ? 0xff00ff : 0xff8800));
+        if (monster.spawnDelay <= 0) {
+          monster.spawnDelay = 0;
+          monster.isChasing = true; // 延迟结束，开始追击
+        } else {
+          continue;
+        }
       }
 
       const distToPlayer = Phaser.Math.Distance.Between(
