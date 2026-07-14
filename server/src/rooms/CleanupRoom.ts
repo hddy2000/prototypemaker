@@ -127,6 +127,12 @@ export class CleanupRoom extends Room<CleanupGameState> {
   private evacTimers: Map<string, number> = new Map(); // sessionId → remaining ms
   private sprayCooldowns: Map<string, number> = new Map(); // sessionId → last spray time
 
+  // Spatial grid for fast obstacle collision lookups
+  private obstacleGrid: Obstacle[][] = [];
+  private gridCols = 0;
+  private gridRows = 0;
+  private readonly GRID_CELL = 200; // 200px cells → 12×8 grid for 2400×1600 map
+
   onCreate(_options: any) {
     console.log(`[CleanupRoom] onCreate roomId=${this.roomId}`);
     this.setState(new CleanupGameState());
@@ -140,6 +146,7 @@ export class CleanupRoom extends Room<CleanupGameState> {
     this.generateBuilding();
     this.generateHideRooms();
     this.createStains();
+    this.buildObstacleGrid();
 
     // Sync obstacles + hide spots to state (so client can render them)
     let obsId = 1;
@@ -209,6 +216,10 @@ export class CleanupRoom extends Room<CleanupGameState> {
     this.setSimulationInterval((deltaTime) => {
       this.update(deltaTime);
     });
+
+    // Limit state broadcast frequency to ~20Hz (50ms) instead of default ~50Hz
+    // This drastically reduces network traffic for monster/player position updates
+    this.setPatchRate(50);
   }
 
   onJoin(client: Client, _options: any) {
@@ -1144,8 +1155,34 @@ export class CleanupRoom extends Room<CleanupGameState> {
 
   // ─── Collision helpers ─────────────────────────────────────
 
-  private isObstacleAt(px: number, py: number): boolean {
+  private buildObstacleGrid() {
+    this.gridCols = Math.ceil(MAP_WIDTH / this.GRID_CELL);
+    this.gridRows = Math.ceil(MAP_HEIGHT / this.GRID_CELL);
+    this.obstacleGrid = new Array(this.gridCols * this.gridRows);
+    for (let i = 0; i < this.obstacleGrid.length; i++) {
+      this.obstacleGrid[i] = [];
+    }
     for (const obs of this.obstacles) {
+      const c0 = Math.floor(obs.x / this.GRID_CELL);
+      const c1 = Math.floor((obs.x + obs.w) / this.GRID_CELL);
+      const r0 = Math.floor(obs.y / this.GRID_CELL);
+      const r1 = Math.floor((obs.y + obs.h) / this.GRID_CELL);
+      for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+          if (r >= 0 && r < this.gridRows && c >= 0 && c < this.gridCols) {
+            this.obstacleGrid[r * this.gridCols + c].push(obs);
+          }
+        }
+      }
+    }
+  }
+
+  private isObstacleAt(px: number, py: number): boolean {
+    const c = Math.floor(px / this.GRID_CELL);
+    const r = Math.floor(py / this.GRID_CELL);
+    if (c < 0 || c >= this.gridCols || r < 0 || r >= this.gridRows) return false;
+    const cell = this.obstacleGrid[r * this.gridCols + c];
+    for (const obs of cell) {
       if (px >= obs.x && px <= obs.x + obs.w && py >= obs.y && py <= obs.y + obs.h) {
         return true;
       }
@@ -1154,24 +1191,99 @@ export class CleanupRoom extends Room<CleanupGameState> {
   }
 
   private isInsideObstacle(x: number, y: number, radius: number): boolean {
-    for (const obs of this.obstacles) {
-      const closestX = Math.max(obs.x, Math.min(x, obs.x + obs.w));
-      const closestY = Math.max(obs.y, Math.min(y, obs.y + obs.h));
-      const dist = Math.hypot(x - closestX, y - closestY);
-      if (dist < radius) return true;
+    // Check cells covered by the circle's bounding box
+    const c0 = Math.floor((x - radius) / this.GRID_CELL);
+    const c1 = Math.floor((x + radius) / this.GRID_CELL);
+    const r0 = Math.floor((y - radius) / this.GRID_CELL);
+    const r1 = Math.floor((y + radius) / this.GRID_CELL);
+    const checked = new Set<Obstacle>();
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        if (r < 0 || r >= this.gridRows || c < 0 || c >= this.gridCols) continue;
+        const cell = this.obstacleGrid[r * this.gridCols + c];
+        for (const obs of cell) {
+          if (checked.has(obs)) continue;
+          checked.add(obs);
+          const closestX = Math.max(obs.x, Math.min(x, obs.x + obs.w));
+          const closestY = Math.max(obs.y, Math.min(y, obs.y + obs.h));
+          const dist = Math.hypot(x - closestX, y - closestY);
+          if (dist < radius) return true;
+        }
+      }
     }
     return false;
   }
 
   private lineBlockedByObstacle(x1: number, y1: number, x2: number, y2: number): boolean {
-    const dist = Math.hypot(x2 - x1, y2 - y1);
-    const steps = Math.ceil(dist / 10);
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      const px = x1 + (x2 - x1) * t;
-      const py = y1 + (y2 - y1) * t;
-      if (this.isObstacleAt(px, py)) return true;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+
+    // Use spatial grid: walk through cells the segment passes through
+    const c1 = Math.floor(x1 / this.GRID_CELL);
+    const r1 = Math.floor(y1 / this.GRID_CELL);
+    const c2 = Math.floor(x2 / this.GRID_CELL);
+    const r2 = Math.floor(y2 / this.GRID_CELL);
+
+    // Collect candidate obstacles from all cells along the line
+    const checked = new Set<Obstacle>();
+
+    // Bresenham-like cell traversal
+    const stepC = c2 >= c1 ? 1 : -1;
+    const stepR = r2 >= r1 ? 1 : -1;
+    const dc = Math.abs(c2 - c1);
+    const dr = Math.abs(r2 - r1);
+    let err = dc - dr;
+    let c = c1;
+    let r = r1;
+
+    while (true) {
+      if (c >= 0 && c < this.gridCols && r >= 0 && r < this.gridRows) {
+        const cell = this.obstacleGrid[r * this.gridCols + c];
+        for (const obs of cell) {
+          if (checked.has(obs)) continue;
+          checked.add(obs);
+
+          // Slab method for segment-AABB intersection
+          const minX = obs.x;
+          const maxX = obs.x + obs.w;
+          const minY = obs.y;
+          const maxY = obs.y + obs.h;
+
+          let tmin = 0;
+          let tmax = 1;
+
+          if (Math.abs(dx) < 1e-10) {
+            if (x1 < minX || x1 > maxX) continue;
+          } else {
+            let t1 = (minX - x1) / dx;
+            let t2 = (maxX - x1) / dx;
+            if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+            tmin = Math.max(tmin, t1);
+            tmax = Math.min(tmax, t2);
+            if (tmin > tmax) continue;
+          }
+
+          if (Math.abs(dy) < 1e-10) {
+            if (y1 < minY || y1 > maxY) continue;
+          } else {
+            let t1 = (minY - y1) / dy;
+            let t2 = (maxY - y1) / dy;
+            if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+            tmin = Math.max(tmin, t1);
+            tmax = Math.min(tmax, t2);
+            if (tmin > tmax) continue;
+          }
+
+          return true;
+        }
+      }
+
+      if (c === c2 && r === r2) break;
+      const err2 = 2 * err;
+      if (err2 > -dr) { err -= dr; c += stepC; }
+      if (err2 < dc) { err += dc; r += stepR; }
     }
+
     return false;
   }
 

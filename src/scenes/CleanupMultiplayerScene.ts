@@ -11,10 +11,16 @@ interface PlayerRender {
   nameText: Phaser.GameObjects.Text;
   healthBar: Phaser.GameObjects.Graphics;
   downIcon: Phaser.GameObjects.Text;
+  healthBarDirty: boolean;
+  colorValue: number;  // cached parsed color to avoid HexStringToColor every onChange
+  targetX: number;     // server-authoritative target position (lerped in update)
+  targetY: number;
 }
 
 interface MonsterRender {
   sprite: Phaser.GameObjects.Rectangle;
+  targetX: number;     // server-authoritative target position (lerped in update)
+  targetY: number;
 }
 
 interface StainRender {
@@ -79,6 +85,24 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
   private aimAngle = 0;
   private sprayGraphics!: Phaser.GameObjects.Graphics;
 
+  // Network throttling — avoid sending spray/move every frame
+  private lastSpraySent = false;       // last spray state sent to server
+  private lastSprayAngleSent = 0;      // last spray angle sent to server
+  private moveAccumulator = 0;         // ms accumulator for move throttling
+  private lastInputX = 0;
+  private lastInputY = 0;
+  private lastSprintSent = false;
+  private lastRotationSent = 0;
+
+  // Render throttling — avoid redundant per-frame work
+  private fogAccumulator = 0;          // ms accumulator for fog redraw (~30Hz)
+  private uiAccumulator = 0;           // ms accumulator for UI text updates (~10Hz)
+  private staminaAccumulator = 0;      // ms accumulator for stamina bar (~15Hz)
+  private lastStaminaVal = -1;
+  private lastSprintVal = false;
+  private cameraFollowSet = false;     // startFollow only once
+  private sprayGraphicsDirty = false;  // track if spray graphics has content
+
   // UI
   private connectionStatus!: Phaser.GameObjects.Text;
   private playerCountText!: Phaser.GameObjects.Text;
@@ -121,6 +145,13 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
     this.mapBuilt = false;
     this.isSpraying = false;
     this.aimAngle = 0;
+    this.fogAccumulator = 0;
+    this.uiAccumulator = 0;
+    this.staminaAccumulator = 0;
+    this.lastStaminaVal = -1;
+    this.lastSprintVal = false;
+    this.cameraFollowSet = false;
+    this.sprayGraphicsDirty = false;
 
     // Background
     this.add.rectangle(400, 300, SCREEN_W, SCREEN_H, 0x0a0a1a).setScrollFactor(0).setDepth(0);
@@ -309,7 +340,10 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
       } else if (phase === 'lost') {
         this.showMessage('💀 团队全灭！\n按ESC返回菜单');
       }
-      this.teamScoreText.setText(`团队价值: ${state.teamScore} / ${state.goalScore}`);
+      const scoreStr = `团队价值: ${state.teamScore} / ${state.goalScore}`;
+      if (this.teamScoreText.text !== scoreStr) {
+        this.teamScoreText.setText(scoreStr);
+      }
       if (state.teamScore >= state.goalScore) {
         this.teamScoreText.setColor('#00ff00');
       }
@@ -352,30 +386,37 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
       const render = this.playerRenders.get(sessionId);
       if (!render) return;
 
-      render.body.setPosition(player.x, player.y);
+      // Store server position as interpolation target — actual setPosition happens in update() via lerp
+      render.targetX = player.x;
+      render.targetY = player.y;
       const isMe = sessionId === this.mySessionId;
       const isDown = player.state === 'down';
       const isDead = player.state === 'dead';
 
       if (isDown) {
         render.body.setFillStyle(0xff4444, 0.6);
-        render.downIcon.setVisible(true).setPosition(player.x, player.y - 20);
+        render.downIcon.setVisible(true);
       } else if (isDead) {
         render.body.setVisible(false);
         render.nameText.setVisible(false);
         render.downIcon.setVisible(false);
       } else {
-        render.body.setVisible(true).setFillStyle(Phaser.Display.Color.HexStringToColor(player.color).color);
+        render.body.setVisible(true).setFillStyle(render.colorValue);
         render.downIcon.setVisible(false);
       }
 
-      if (isMe) {
-        // Camera follow
+      if (isMe && !this.cameraFollowSet) {
+        // Camera follow — only set once
         this.cameras.main.startFollow(render.body, true, 0.1, 0.1);
+        this.cameraFollowSet = true;
       }
 
-      render.nameText.setPosition(player.x, player.y - 22);
-      render.nameText.setText(isMe ? '我' : sessionId.slice(0, 4));
+      // Only update text if it changed (setText is expensive — triggers texture re-render)
+      const newName = isMe ? '我' : sessionId.slice(0, 4);
+      if (render.nameText.text !== newName) {
+        render.nameText.setText(newName);
+      }
+      render.healthBarDirty = true;
     });
   }
 
@@ -386,7 +427,9 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
     monster.onChange(() => {
       const render = this.monsterRenders.get(monsterId);
       if (!render) return;
-      render.sprite.setPosition(monster.x, monster.y);
+      // Store server position as interpolation target — actual setPosition happens in update() via lerp
+      render.targetX = monster.x;
+      render.targetY = monster.y;
 
       if (monster.stunTimer > 0) {
         render.sprite.setFillStyle(0x666666);
@@ -451,14 +494,14 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
       fontSize: '14px',
     }).setOrigin(0.5).setDepth(6).setVisible(false);
 
-    this.playerRenders.set(sessionId, { body, nameText, healthBar, downIcon });
+    this.playerRenders.set(sessionId, { body, nameText, healthBar, downIcon, healthBarDirty: true, colorValue: color, targetX: player.x, targetY: player.y });
   }
 
   private ensureMonsterRender(monsterId: string, monster: any) {
     if (this.monsterRenders.has(monsterId)) return;
     const sprite = this.add.rectangle(monster.x, monster.y, 24, 24, monster.isHunter ? 0xff00ff : 0xff8800);
     sprite.setDepth(5);
-    this.monsterRenders.set(monsterId, { sprite });
+    this.monsterRenders.set(monsterId, { sprite, targetX: monster.x, targetY: monster.y });
   }
 
   private ensureStainRender(stainId: string, stain: any) {
@@ -687,25 +730,44 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
     const mouseWorldY = pointer.y / cam.zoom + cam.worldView.y;
     this.aimAngle = Math.atan2(mouseWorldY - myPlayer.y, mouseWorldX - myPlayer.x);
 
-    // Send move
+    // Send move — throttle to ~20Hz instead of every frame (60Hz)
+    // Only send when input actually changes or every 50ms
+    this.moveAccumulator += delta;
+    const inputChanged = inputX !== this.lastInputX || inputY !== this.lastInputY;
+    const sprintChanged = wantSprint !== this.lastSprintSent;
+    const rotChanged = Math.abs(this.aimAngle - this.lastRotationSent) > 0.05;
+
     if (myPlayer.state === 'alive' && !myPlayer.isHidden) {
-      this.room.send('move', {
-        inputX, inputY,
-        sprint: wantSprint,
-        rotation: this.aimAngle,
-        dt: delta,
-      });
+      if (inputChanged || sprintChanged || rotChanged || this.moveAccumulator >= 50) {
+        this.room.send('move', {
+          inputX, inputY,
+          sprint: wantSprint,
+          rotation: this.aimAngle,
+          dt: Math.min(this.moveAccumulator, 50) || delta,
+        });
+        this.lastInputX = inputX;
+        this.lastInputY = inputY;
+        this.lastSprintSent = wantSprint;
+        this.lastRotationSent = this.aimAngle;
+        this.moveAccumulator = 0;
+      }
     }
 
-    // Send spray
-    this.room.send('spray', {
-      spraying: this.isSpraying,
-      angle: this.aimAngle,
-    });
+    // Send spray — only when state or angle changes significantly
+    const sprayAngleChanged = Math.abs(this.aimAngle - this.lastSprayAngleSent) > 0.05;
+    if (this.isSpraying !== this.lastSpraySent || (this.isSpraying && sprayAngleChanged)) {
+      this.room.send('spray', {
+        spraying: this.isSpraying,
+        angle: this.aimAngle,
+      });
+      this.lastSpraySent = this.isSpraying;
+      this.lastSprayAngleSent = this.aimAngle;
+    }
 
-    // Draw spray cone for local player
-    this.sprayGraphics.clear();
+    // Draw spray cone for local player — only redraw if spraying (avoid clear() every frame when idle)
     if (this.isSpraying && myPlayer.state === 'alive' && !myPlayer.isHidden) {
+      this.sprayGraphics.clear();
+      this.sprayGraphicsDirty = true;
       const px = myPlayer.x;
       const py = myPlayer.y;
       const a = this.aimAngle;
@@ -727,78 +789,124 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
       this.sprayGraphics.lineTo(px + Math.cos(a + halfAngle * 0.4) * range, py + Math.sin(a + halfAngle * 0.4) * range);
       this.sprayGraphics.closePath();
       this.sprayGraphics.fillPath();
+    } else if (this.sprayGraphicsDirty) {
+      // Clear once when spray stops
+      this.sprayGraphics.clear();
+      this.sprayGraphicsDirty = false;
     }
 
-    // Update health bars for all players
+    // Update health bars for all players — only redraw if dirty (set in onChange)
     this.playerRenders.forEach((render, sid) => {
       const p = this.room.state.players.get(sid) as any;
-      if (!p) return;
-      render.healthBar.clear();
-      const barW = 30;
-      const barH = 4;
-      const bx = p.x - barW / 2;
-      const by = p.y + 16;
-
-      render.healthBar.fillStyle(0x220000, 0.8);
-      render.healthBar.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
-
-      const hpct = Math.max(0, p.health / 100);
-      if (p.state === 'down') {
-        render.healthBar.fillStyle(0xff4444, 0.9);
-      } else if (hpct > 0.5) {
-        render.healthBar.fillStyle(0x44ff44, 0.9);
-      } else {
-        render.healthBar.fillStyle(0xff8800, 0.9);
-      }
-      render.healthBar.fillRect(bx, by, barW * hpct, barH);
-
-      // Down timer ring
-      if (p.state === 'down') {
-        const downPct = 1 - (p.downTimer / 15000);
-        render.healthBar.fillStyle(0xff0000, 0.5);
-        render.healthBar.fillRect(bx, by + barH + 1, barW * downPct, 2);
-
-        // Revive progress
-        if (p.reviveProgress > 0) {
-          render.healthBar.fillStyle(0x00ff00, 0.9);
-          render.healthBar.fillRect(bx, by + barH + 4, barW * (p.reviveProgress / 100), 2);
-        }
-      }
+      if (!p || !render.healthBarDirty) return;
+      this.drawHealthBar(render, p);
+      render.healthBarDirty = false;
     });
 
-    // Update UI
-    this.updateUI(myPlayer);
+    // Interpolate remote entity positions toward server target (smooths 20Hz updates to 60fps)
+    // Local player: snap directly (no jitter — server echoes our own input)
+    this.playerRenders.forEach((render, sid) => {
+      if (sid === this.mySessionId) {
+        render.body.setPosition(render.targetX, render.targetY);
+      } else {
+        render.body.x = Phaser.Math.Linear(render.body.x, render.targetX, 0.2);
+        render.body.y = Phaser.Math.Linear(render.body.y, render.targetY, 0.2);
+      }
+      // Name text & down icon follow the body
+      render.nameText.setPosition(render.body.x, render.body.y - 22);
+      const p = this.room.state.players.get(sid) as any;
+      if (p && p.state === 'down') {
+        render.downIcon.setPosition(render.body.x, render.body.y - 20);
+      }
+    });
+    this.monsterRenders.forEach((render) => {
+      render.sprite.x = Phaser.Math.Linear(render.sprite.x, render.targetX, 0.2);
+      render.sprite.y = Phaser.Math.Linear(render.sprite.y, render.targetY, 0.2);
+    });
 
-    // Fog
-    if (this.fogImage && this.fogCanvas) {
+    // Fog — throttle to ~30Hz (visual difference is imperceptible above 30fps)
+    this.fogAccumulator += delta;
+    if (this.fogImage && this.fogCanvas && this.fogAccumulator >= 33) {
       // NOTE: Use cam.worldView (not cam.scrollX/Y) because Phaser 3.90 scrollX != worldView.x when zoom != 1
       const screenX = (myPlayer.x - cam.worldView.x) * cam.zoom;
       const screenY = (myPlayer.y - cam.worldView.y) * cam.zoom;
       this.drawFog(screenX, screenY, myPlayer.blindTimer > 0);
+      this.fogAccumulator = 0;
     }
 
-    // Stamina bar
-    this.drawStaminaBar(myPlayer.stamina, myPlayer.isSprinting || (this.shiftKey.isDown && (inputX !== 0 || inputY !== 0)));
+    // Stamina bar — throttle to ~15Hz, skip if unchanged
+    const isSprinting = myPlayer.isSprinting || (this.shiftKey.isDown && (inputX !== 0 || inputY !== 0));
+    this.staminaAccumulator += delta;
+    if (this.staminaAccumulator >= 66) {
+      const staminaChanged = Math.abs(myPlayer.stamina - this.lastStaminaVal) > 0.5;
+      const sprintChanged = isSprinting !== this.lastSprintVal;
+      if (staminaChanged || sprintChanged) {
+        this.drawStaminaBar(myPlayer.stamina, isSprinting);
+        this.lastStaminaVal = myPlayer.stamina;
+        this.lastSprintVal = isSprinting;
+      }
+      this.staminaAccumulator = 0;
+    }
 
-    // Revive prompt
-    const nearDowned: string[] = [];
-    this.room.state.players.forEach((p: any, sid: string) => {
-      if (sid === this.mySessionId || p.state !== 'down') return;
-      const dist = Math.hypot(p.x - myPlayer.x, p.y - myPlayer.y);
-      if (dist < 50) nearDowned.push(sid);
-    });
-    if (nearDowned.length > 0 && myPlayer.state === 'alive') {
-      this.revivePrompt.setText(`按 E 复活队友 ${nearDowned.slice(0, 4).join(', ')}!`).setVisible(true);
+    // Update UI text + revive prompt + player count — throttle to ~10Hz
+    this.uiAccumulator += delta;
+    if (this.uiAccumulator >= 100) {
+      this.updateUI(myPlayer);
+      const nearDowned: string[] = [];
+      let aliveCount = 0;
+      this.room.state.players.forEach((p: any, sid: string) => {
+        if (p.state === 'alive' || p.state === 'down') aliveCount++;
+        if (sid === this.mySessionId || p.state !== 'down') return;
+        const dist = Math.hypot(p.x - myPlayer.x, p.y - myPlayer.y);
+        if (dist < 50) nearDowned.push(sid);
+      });
+      if (nearDowned.length > 0 && myPlayer.state === 'alive') {
+        const promptStr = `按 E 复活队友 ${nearDowned.slice(0, 4).join(', ')}!`;
+        if (this.revivePrompt.text !== promptStr) this.revivePrompt.setText(promptStr);
+        this.revivePrompt.setVisible(true);
+      } else {
+        this.revivePrompt.setVisible(false);
+      }
+      const countStr = `Players: ${this.room.state.players.size} (${aliveCount} alive)`;
+      if (this.playerCountText.text !== countStr) this.playerCountText.setText(countStr);
+      this.uiAccumulator = 0;
+    }
+  }
+
+  /** Draw a player's health bar onto its Graphics object */
+  private drawHealthBar(render: PlayerRender, p: any) {
+    render.healthBar.clear();
+    const barW = 30;
+    const barH = 4;
+    // Use interpolated body position (not raw server p.x/p.y) so bar stays attached to sprite
+    const bx = render.body.x - barW / 2;
+    const by = render.body.y + 16;
+
+    render.healthBar.fillStyle(0x220000, 0.8);
+    render.healthBar.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+
+    const hpct = Math.max(0, p.health / 100);
+    if (p.state === 'down') {
+      render.healthBar.fillStyle(0xff4444, 0.9);
+    } else if (hpct > 0.5) {
+      render.healthBar.fillStyle(0x44ff44, 0.9);
     } else {
-      this.revivePrompt.setVisible(false);
+      render.healthBar.fillStyle(0xff8800, 0.9);
     }
+    render.healthBar.fillRect(bx, by, barW * hpct, barH);
 
-    // Player count
-    let aliveCount = 0;
-    this.room.state.players.forEach((p: any) => {
-      if (p.state === 'alive' || p.state === 'down') aliveCount++;
-    });
-    this.playerCountText.setText(`Players: ${this.room.state.players.size} (${aliveCount} alive)`);
+    // Down timer ring
+    if (p.state === 'down') {
+      const downPct = 1 - (p.downTimer / 15000);
+      render.healthBar.fillStyle(0xff0000, 0.5);
+      render.healthBar.fillRect(bx, by + barH + 1, barW * downPct, 2);
+
+      // Revive progress
+      if (p.reviveProgress > 0) {
+        render.healthBar.fillStyle(0x00ff00, 0.9);
+        render.healthBar.fillRect(bx, by + barH + 4, barW * (p.reviveProgress / 100), 2);
+      }
+    }
   }
 
   // ─── UI updates ────────────────────────────────────────────
@@ -809,33 +917,40 @@ export class CleanupMultiplayerScene extends Phaser.Scene {
     if (myPlayer.hasShield) effects.push('🛡护盾');
     if (myPlayer.blindTimer > 0) effects.push('👁致盲');
     if (myPlayer.slowTimer > 0) effects.push('🐌减速');
-    this.statusText.setText(effects.join(' '));
+    const effectsStr = effects.join(' ');
+    if (this.statusText.text !== effectsStr) this.statusText.setText(effectsStr);
 
     // Timer
     const state = this.room.state as any;
+    let timerStr: string;
     if (state.phase === 'active' && state.roundEndsAt > 0) {
       const remaining = Math.max(0, state.roundEndsAt - Date.now());
       const sec = Math.ceil(remaining / 1000);
       const min = Math.floor(sec / 60);
       const s = sec % 60;
-      this.timerText.setText(`${min}:${s.toString().padStart(2, '0')}`);
+      timerStr = `${min}:${s.toString().padStart(2, '0')}`;
     } else if (state.phase === 'waiting') {
-      this.timerText.setText('Waiting...');
+      timerStr = 'Waiting...';
     } else if (state.phase === 'won') {
-      this.timerText.setText('WIN!');
+      timerStr = 'WIN!';
     } else if (state.phase === 'lost') {
-      this.timerText.setText('LOST');
+      timerStr = 'LOST';
+    } else {
+      timerStr = '';
     }
+    if (this.timerText.text !== timerStr) this.timerText.setText(timerStr);
 
     // Evac text
     const distToExit = Math.hypot(myPlayer.x - state.exitX, myPlayer.y - state.exitY);
+    let evacStr: string;
     if (distToExit < 40 && state.teamScore >= state.goalScore && myPlayer.state === 'alive') {
-      this.evacText.setText('按 E 撤离！');
+      evacStr = '按 E 撤离！';
     } else if (distToExit < 40 && state.teamScore < state.goalScore) {
-      this.evacText.setText(`还需 ${state.goalScore - state.teamScore} 价值`);
+      evacStr = `还需 ${state.goalScore - state.teamScore} 价值`;
     } else {
-      this.evacText.setText('');
+      evacStr = '';
     }
+    if (this.evacText.text !== evacStr) this.evacText.setText(evacStr);
   }
 
   private drawStaminaBar(stamina: number, isSprinting: boolean) {

@@ -49,6 +49,28 @@ interface Monster {
   // ── 特殊怪字段 ──
   isSpawner: boolean;    // 挖石头召唤出的特殊怪，快速追击
   alertTimer: number;    // 发现玩家时的警觉闪烁计时，>0 时原地闪红不移动
+  // ── 炮塔型怪物字段 ──
+  isTurret: boolean;     // 是否为炮塔型怪物（大范围巡逻，发现玩家后原地吐子弹远程攻击，不追击）
+  turretState: 'patrol' | 'alert' | 'shooting' | 'cooldown'; // 炮塔状态机
+  turretTimer: number;   // 当前状态的剩余计时(ms)
+  turretShootTimer: number; // 射击间隔计时
+  turretPatrolRadius: number; // 巡逻范围（很大）
+  // ── 抓捕型怪物字段 ──
+  isGrabbler: boolean;   // 是否为抓捕型怪物（大体形，抓住玩家拖到随机地点扔下掉血，然后长CD）
+  grabblerState: 'patrol' | 'grabbing' | 'dragging' | 'dropping' | 'recovery'; // 抓捕状态机
+  grabblerTimer: number; // 当前状态的剩余计时(ms)
+  grabblerTargetX: number; // 拖拽目标点X
+  grabblerTargetY: number; // 拖拽目标点Y
+  grabblerDragSpeed: number; // 拖拽速度
+}
+
+interface Bullet {
+  sprite: Phaser.GameObjects.Arc;
+  vx: number;
+  vy: number;
+  life: number;     // 剩余存活时间(ms)
+  damage: number;
+  active: boolean;
 }
 
 interface Stain {
@@ -146,6 +168,30 @@ const TRAP_REVEAL_DELAY = 1000;  // 现身后1秒突袭（无论距离）
 const TRAP_STRIKE_RANGE = 50;    // 突袭命中范围
 const TRAP_STRIKE_DAMAGE = 20;  // 突袭伤害
 
+// ─── Constants: turret monsters (炮塔怪) ────────────────────
+const TURRET_COLOR = 0x00cccc;       // 青色
+const TURRET_ALERT_DURATION = 600;   // 发现玩家后闪光警觉时间(ms)
+const TURRET_SHOOT_INTERVAL = 800;   // 每次射击间隔(ms)
+const TURRET_SHOOT_DURATION = 4000;  // 射击阶段总时长(ms)，结束后进入冷却
+const TURRET_COOLDOWN_DURATION = 3000; // 射击后冷却时间(ms)，原地不动
+const TURRET_BULLET_SPEED = 200;     // 子弹速度
+const TURRET_BULLET_DAMAGE = 10;     // 子弹伤害
+const TURRET_BULLET_LIFE = 3000;     // 子弹存活时间(ms)
+const TURRET_BULLET_RADIUS = 6;      // 子弹半径
+const TURRET_PATROL_RADIUS = 600;    // 巡逻范围（很大）
+const TURRET_VISION_RANGE = 250;     // 视野范围
+
+// ─── Constants: grabbler monsters (抓捕怪) ──────────────────
+const GRABBLER_COLOR = 0x8b4513;      // 棕色（大体形）
+const GRABBLER_SIZE = 40;             // 大体形尺寸
+const GRABBLER_VISION_RANGE = 200;    // 视野范围
+const GRABBLER_CHASE_SPEED = 140;     // 追击速度（比玩家步行慢，疾跑可甩掉）
+const GRABBLER_DRAG_SPEED = 180;       // 拖拽玩家速度
+const GRABBLER_DROP_DAMAGE = 25;      // 扔下掉血
+const GRABBLER_DROP_DISTANCE = 300;   // 拖拽目标距离
+const GRABBLER_RECOVERY_DURATION = 5000; // 扔下后长CD(ms)
+const GRABBLER_GRAB_RANGE = 35;       // 抓住玩家判定范围
+
 // ─── Scene ────────────────────────────────────────────────────
 
 export class CleanupEvacScene extends Phaser.Scene {
@@ -179,6 +225,7 @@ export class CleanupEvacScene extends Phaser.Scene {
   private stains: Stain[] = [];
   private monsters: Monster[] = [];
   private loots: Loot[] = [];
+  private bullets: Bullet[] = [];
   private exit!: Phaser.GameObjects.Rectangle;
 
   // Water gun
@@ -204,6 +251,9 @@ export class CleanupEvacScene extends Phaser.Scene {
   // Hide
   private isHidden = false;
   private hiddenSpot: HideSpot | null = null;
+
+  // Grabbed by grabbler monster
+  private isGrabbed = false;
 
   // Negative effects
   private blindTimer = 0;
@@ -257,6 +307,7 @@ export class CleanupEvacScene extends Phaser.Scene {
     this.stains = [];
     this.monsters = [];
     this.loots = [];
+    this.bullets = [];
     this.obstacles = [];
     this.hideSpots = [];
     this.waterParticles = [];
@@ -264,6 +315,7 @@ export class CleanupEvacScene extends Phaser.Scene {
     this.isSprinting = false;
     this.isHidden = false;
     this.hiddenSpot = null;
+    this.isGrabbed = false;
     this.equipmentSlots = [null, null, null];
     this.equipmentSlotBgs = [];
     this.equipmentSlotTexts = [];
@@ -606,46 +658,86 @@ export class CleanupEvacScene extends Phaser.Scene {
   // ─── Monsters ───────────────────────────────────────────────
 
   private createMonsters() {
-    const monsterCount = 15;
-    const hunterCount = 6;  // 6只猎手 + 9只陷阱
-    const minDist = 200;   // 同类怪物之间最小间距，避免集中
+    // 用网格分布法让每种怪物均匀散布在地图上
+    // 地图 2400×1600，每种类型按数量划分网格，每格放一只
 
-    // ── 先放猎手 ──
-    const hunterPositions: { x: number; y: number }[] = [];
-    let placed = 0;
-    let attempts = 0;
-    while (placed < hunterCount && attempts < 500) {
-      const x = Phaser.Math.Between(200, this.mapWidth - 200);
-      const y = Phaser.Math.Between(200, this.mapHeight - 200);
+    const margin = 120; // 离地图边缘的最小距离
+    const spawnSafeDist = 500; // 离玩家出生点(80,80)的最小距离
 
-      if (Phaser.Math.Distance.Between(x, y, 80, 80) < 400) { attempts++; continue; }
-      if (this.isInsideObstacle(x, y, 14)) { attempts++; continue; }
-      // 与其他猎手保持距离
-      if (hunterPositions.some(p => Phaser.Math.Distance.Between(x, y, p.x, p.y) < minDist)) { attempts++; continue; }
-
-      hunterPositions.push({ x, y });
+    // ── 猎手 4只 → 2×2 网格 ──
+    this.placeMonstersInGrid(4, 2, 2, margin, spawnSafeDist, (x, y) => {
       this.spawnMonster(x, y, true, false);
-      placed++;
-      attempts++;
-    }
+    });
 
-    // ── 再放陷阱怪 ──
-    const trapPositions: { x: number; y: number }[] = [];
-    placed = 0;
-    attempts = 0;
-    while (placed < (monsterCount - hunterCount) && attempts < 500) {
-      const x = Phaser.Math.Between(200, this.mapWidth - 200);
-      const y = Phaser.Math.Between(200, this.mapHeight - 200);
-
-      if (Phaser.Math.Distance.Between(x, y, 80, 80) < 400) { attempts++; continue; }
-      if (this.isInsideObstacle(x, y, 14)) { attempts++; continue; }
-      // 与其他陷阱怪保持距离
-      if (trapPositions.some(p => Phaser.Math.Distance.Between(x, y, p.x, p.y) < minDist)) { attempts++; continue; }
-
-      trapPositions.push({ x, y });
+    // ── 陷阱怪 7只 → 3×3 网格（9格用7格） ──
+    this.placeMonstersInGrid(7, 3, 3, margin, spawnSafeDist, (x, y) => {
       this.spawnMonster(x, y, false, true);
-      placed++;
-      attempts++;
+    });
+
+    // ── 炮塔怪 2只 → 2×1 网格 ──
+    this.placeMonstersInGrid(2, 2, 1, margin, spawnSafeDist, (x, y) => {
+      this.spawnTurretMonster(x, y);
+    });
+
+    // ── 抓捕怪 1只 → 1×1 网格 ──
+    this.placeMonstersInGrid(1, 1, 1, margin, spawnSafeDist, (x, y) => {
+      this.spawnGrabblerMonster(x, y);
+    });
+  }
+
+  /** 网格分布法放置怪物：将地图划分为 cols×rows 个格子，在每格内随机选一个合法位置放一只怪物 */
+  private placeMonstersInGrid(
+    count: number, cols: number, rows: number,
+    margin: number, spawnSafeDist: number,
+    spawnFn: (x: number, y: number) => void,
+  ) {
+    const cellW = (this.mapWidth - margin * 2) / cols;
+    const cellH = (this.mapHeight - margin * 2) / rows;
+
+    // 生成所有格子索引并打乱顺序，取前 count 个
+    const cellIndices: number[] = [];
+    for (let i = 0; i < cols * rows; i++) cellIndices.push(i);
+    Phaser.Utils.Array.Shuffle(cellIndices);
+
+    let placed = 0;
+    for (const idx of cellIndices) {
+      if (placed >= count) break;
+
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const cellLeft = margin + col * cellW;
+      const cellTop = margin + row * cellH;
+
+      // 在当前格子内随机尝试放置
+      let cellPlaced = false;
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const x = Phaser.Math.Between(cellLeft + 20, cellLeft + cellW - 20);
+        const y = Phaser.Math.Between(cellTop + 20, cellTop + cellH - 20);
+
+        // 远离玩家出生点
+        if (Phaser.Math.Distance.Between(x, y, 80, 80) < spawnSafeDist) continue;
+        // 不在障碍物内
+        if (this.isInsideObstacle(x, y, 14)) continue;
+
+        spawnFn(x, y);
+        cellPlaced = true;
+        placed++;
+        break;
+      }
+
+      // 如果当前格子实在放不下，跳过（不重试其他格子）
+      if (!cellPlaced) {
+        // 最后兜底：放宽条件再试一次
+        for (let attempt = 0; attempt < 40; attempt++) {
+          const x = Phaser.Math.Between(cellLeft, cellLeft + cellW);
+          const y = Phaser.Math.Between(cellTop, cellTop + cellH);
+          if (Phaser.Math.Distance.Between(x, y, 80, 80) < 300) continue;
+          if (this.isInsideObstacle(x, y, 14)) continue;
+          spawnFn(x, y);
+          placed++;
+          break;
+        }
+      }
     }
   }
 
@@ -696,6 +788,122 @@ export class CleanupEvacScene extends Phaser.Scene {
       wallAngle,
       isSpawner: false,
       alertTimer: 0,
+      // 炮塔字段（默认值）
+      isTurret: false,
+      turretState: 'patrol',
+      turretTimer: 0,
+      turretShootTimer: 0,
+      turretPatrolRadius: 0,
+      // 抓捕字段（默认值）
+      isGrabbler: false,
+      grabblerState: 'patrol',
+      grabblerTimer: 0,
+      grabblerTargetX: 0,
+      grabblerTargetY: 0,
+      grabblerDragSpeed: 0,
+    });
+  }
+
+  /** 创建炮塔型怪物（青色，大范围巡逻，发现玩家后原地吐子弹远程攻击，不追击） */
+  private spawnTurretMonster(x: number, y: number) {
+    const sprite = this.add.rectangle(x, y, 28, 28, TURRET_COLOR);
+    sprite.setDepth(5);
+    // 描边效果让炮塔怪更醒目
+    sprite.setStrokeStyle(2, 0x00ffff, 0.8);
+
+    this.monsters.push({
+      sprite,
+      speed: 50,             // 巡逻速度
+      chaseSpeed: 0,         // 不追击
+      direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
+      patrolTimer: Phaser.Math.Between(0, 3000),
+      isChasing: false,
+      visionRange: TURRET_VISION_RANGE,
+      visionAngle: Math.PI * 2, // 360°视野（远程怪）
+      territoryRadius: 9999,
+      homeX: x,
+      homeY: y,
+      giveUpTimer: 0,
+      giveUpDuration: 5000,
+      isHunter: false,
+      stunTimer: 0,
+      attackCooldown: 0,
+      returnHomeTimer: 0,
+      lastSeenX: 0,
+      lastSeenY: 0,
+      hasLastSeen: false,
+      searchingTimer: 0,
+      spawnDelay: 0,
+      isTrap: false,
+      trapState: 'hidden',
+      trapTimer: 0,
+      wallAngle: 0,
+      isSpawner: false,
+      alertTimer: 0,
+      // 炮塔字段
+      isTurret: true,
+      turretState: 'patrol',
+      turretTimer: 0,
+      turretShootTimer: 0,
+      turretPatrolRadius: TURRET_PATROL_RADIUS,
+      // 抓捕字段（默认值）
+      isGrabbler: false,
+      grabblerState: 'patrol',
+      grabblerTimer: 0,
+      grabblerTargetX: 0,
+      grabblerTargetY: 0,
+      grabblerDragSpeed: 0,
+    });
+  }
+
+  /** 创建抓捕型怪物（棕色，大体形，抓住玩家拖到随机地点扔下掉血，然后长CD） */
+  private spawnGrabblerMonster(x: number, y: number) {
+    const sprite = this.add.rectangle(x, y, GRABBLER_SIZE, GRABBLER_SIZE, GRABBLER_COLOR);
+    sprite.setDepth(5);
+    sprite.setStrokeStyle(3, 0xd2691e, 0.9); // 描边更粗
+
+    this.monsters.push({
+      sprite,
+      speed: 35,             // 巡逻速度（慢）
+      chaseSpeed: GRABBLER_CHASE_SPEED,
+      direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
+      patrolTimer: Phaser.Math.Between(0, 3000),
+      isChasing: false,
+      visionRange: GRABBLER_VISION_RANGE,
+      visionAngle: Math.PI / 2, // 90°视野
+      territoryRadius: 9999,
+      homeX: x,
+      homeY: y,
+      giveUpTimer: 0,
+      giveUpDuration: 8000,
+      isHunter: false,
+      stunTimer: 0,
+      attackCooldown: 0,
+      returnHomeTimer: 0,
+      lastSeenX: 0,
+      lastSeenY: 0,
+      hasLastSeen: false,
+      searchingTimer: 0,
+      spawnDelay: 0,
+      isTrap: false,
+      trapState: 'hidden',
+      trapTimer: 0,
+      wallAngle: 0,
+      isSpawner: false,
+      alertTimer: 0,
+      // 炮塔字段（默认值）
+      isTurret: false,
+      turretState: 'patrol',
+      turretTimer: 0,
+      turretShootTimer: 0,
+      turretPatrolRadius: 0,
+      // 抓捕字段
+      isGrabbler: true,
+      grabblerState: 'patrol',
+      grabblerTimer: 0,
+      grabblerTargetX: 0,
+      grabblerTargetY: 0,
+      grabblerDragSpeed: GRABBLER_DRAG_SPEED,
     });
   }
 
@@ -958,8 +1166,8 @@ export class CleanupEvacScene extends Phaser.Scene {
     const mouseWorldY = pointer.y + cam.scrollY;
     this.aimAngle = Math.atan2(mouseWorldY - this.player.y, mouseWorldX - this.player.x);
 
-    // 躲藏时不能移动/喷射，但体力恢复和雾仍更新
-    if (!this.isHidden) {
+    // 躲藏或被抓时不能移动/喷射，但体力恢复和雾仍更新
+    if (!this.isHidden && !this.isGrabbed) {
       this.handlePlayerMovement(delta);
       this.updateSpray(delta);
       this.updateStains(delta);
@@ -970,6 +1178,7 @@ export class CleanupEvacScene extends Phaser.Scene {
       this.stamina = Math.min(STAMINA_MAX, this.stamina + STAMINA_REGEN_RATE * (delta / 1000));
     }
     this.updateMonsters(delta);
+    this.updateBullets(delta);
     this.checkLootPickup();
     this.checkMonsterCollision();
     this.updateNegativeEffects(delta);
@@ -1603,6 +1812,19 @@ export class CleanupEvacScene extends Phaser.Scene {
             wallAngle: 0,
             isSpawner: true,
             alertTimer: 0,
+            // 炮塔字段（默认值）
+            isTurret: false,
+            turretState: 'patrol',
+            turretTimer: 0,
+            turretShootTimer: 0,
+            turretPatrolRadius: 0,
+            // 抓捕字段（默认值）
+            isGrabbler: false,
+            grabblerState: 'patrol',
+            grabblerTimer: 0,
+            grabblerTargetX: 0,
+            grabblerTargetY: 0,
+            grabblerDragSpeed: 0,
           });
           placed = true;
           this.playSpawnJumpscare();
@@ -1632,6 +1854,18 @@ export class CleanupEvacScene extends Phaser.Scene {
       // ── 陷阱型怪物：独立状态机，不走巡逻/追击逻辑 ──
       if (monster.isTrap) {
         this.updateTrapMonster(monster, delta);
+        continue;
+      }
+
+      // ── 炮塔型怪物：独立状态机，大范围巡逻+远程吐子弹 ──
+      if (monster.isTurret) {
+        this.updateTurretMonster(monster, delta);
+        continue;
+      }
+
+      // ── 抓捕型怪物：独立状态机，抓住玩家拖走 ──
+      if (monster.isGrabbler) {
+        this.updateGrabblerMonster(monster, delta);
         continue;
       }
 
@@ -1899,6 +2133,426 @@ export class CleanupEvacScene extends Phaser.Scene {
     }
   }
 
+  // ─── Turret monster state machine (炮塔怪) ─────────────────
+  // 巡逻范围很大，发现玩家后闪一下光（警觉），然后原地吐子弹远程攻击，不追击
+
+  private updateTurretMonster(monster: Monster, delta: number) {
+    const dt = delta / 1000;
+    const distToPlayer = Phaser.Math.Distance.Between(
+      monster.sprite.x, monster.sprite.y, this.player.x, this.player.y
+    );
+
+    // 被水枪眩晕期间暂停
+    if (monster.stunTimer > 0) {
+      monster.stunTimer -= delta;
+      monster.sprite.setFillStyle(0x666666);
+      return;
+    }
+
+    switch (monster.turretState) {
+      // ── 巡逻：大范围随机移动 ──
+      case 'patrol': {
+        monster.sprite.setFillStyle(TURRET_COLOR);
+
+        // 检测玩家
+        if (distToPlayer < monster.visionRange && !this.isHidden &&
+          !this.lineBlockedByObstacle(monster.sprite.x, monster.sprite.y, this.player.x, this.player.y)) {
+          // 发现玩家 → 进入警觉闪光
+          monster.turretState = 'alert';
+          monster.turretTimer = TURRET_ALERT_DURATION;
+          this.sound.play('crying');
+          this.cam.shake(150, 0.005);
+          break;
+        }
+
+        // 巡逻移动（大范围）
+        monster.patrolTimer += delta;
+        if (monster.patrolTimer > 2500) {
+          monster.patrolTimer = 0;
+          const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          monster.direction.set(Math.cos(angle), Math.sin(angle));
+        }
+
+        // 离家太远时往回走
+        const distFromHome = Phaser.Math.Distance.Between(
+          monster.sprite.x, monster.sprite.y, monster.homeX, monster.homeY
+        );
+        if (distFromHome > monster.turretPatrolRadius) {
+          const toHome = new Phaser.Math.Vector2(
+            monster.homeX - monster.sprite.x, monster.homeY - monster.sprite.y
+          ).normalize();
+          monster.direction.lerp(toHome, 0.05).normalize();
+        }
+
+        const newX = monster.sprite.x + monster.direction.x * monster.speed * dt;
+        const newY = monster.sprite.y + monster.direction.y * monster.speed * dt;
+        if (!this.isObstacleAt(newX, monster.sprite.y, 0)) {
+          monster.sprite.x = newX;
+        } else {
+          monster.direction.x *= -1;
+        }
+        if (!this.isObstacleAt(monster.sprite.x, newY, 0)) {
+          monster.sprite.y = newY;
+        } else {
+          monster.direction.y *= -1;
+        }
+        break;
+      }
+
+      // ── 警觉闪光：原地闪烁，准备射击 ──
+      case 'alert': {
+        monster.turretTimer -= delta;
+        const blink = Math.floor(monster.turretTimer / 100) % 2 === 0;
+        monster.sprite.setFillStyle(blink ? 0xffffff : TURRET_COLOR);
+
+        if (monster.turretTimer <= 0) {
+          monster.turretState = 'shooting';
+          monster.turretTimer = TURRET_SHOOT_DURATION;
+          monster.turretShootTimer = 0; // 立即射第一发
+        }
+        break;
+      }
+
+      // ── 射击：原地吐子弹 ──
+      case 'shooting': {
+        monster.sprite.setFillStyle(0x00ffff);
+        monster.turretTimer -= delta;
+        monster.turretShootTimer -= delta;
+
+        // 朝玩家方向射击
+        if (monster.turretShootTimer <= 0) {
+          monster.turretShootTimer = TURRET_SHOOT_INTERVAL;
+          this.fireTurretBullet(monster);
+        }
+
+        if (monster.turretTimer <= 0) {
+          monster.turretState = 'cooldown';
+          monster.turretTimer = TURRET_COOLDOWN_DURATION;
+        }
+        break;
+      }
+
+      // ── 冷却：原地不动，恢复巡逻 ──
+      case 'cooldown': {
+        monster.turretTimer -= delta;
+        monster.sprite.setFillStyle(0x448888); // 暗青色
+
+        if (monster.turretTimer <= 0) {
+          monster.turretState = 'patrol';
+        }
+        break;
+      }
+    }
+  }
+
+  /** 炮塔怪发射子弹 */
+  private fireTurretBullet(monster: Monster) {
+    const angle = Math.atan2(
+      this.player.y - monster.sprite.y,
+      this.player.x - monster.sprite.x
+    );
+    // 加一点随机偏移，让子弹不那么精准
+    const spread = Phaser.Math.FloatBetween(-0.15, 0.15);
+    const finalAngle = angle + spread;
+
+    const bulletSprite = this.add.circle(
+      monster.sprite.x, monster.sprite.y, TURRET_BULLET_RADIUS, 0xff6600, 1
+    );
+    bulletSprite.setDepth(6);
+    bulletSprite.setStrokeStyle(1, 0xffff00, 0.8);
+
+    this.bullets.push({
+      sprite: bulletSprite,
+      vx: Math.cos(finalAngle) * TURRET_BULLET_SPEED,
+      vy: Math.sin(finalAngle) * TURRET_BULLET_SPEED,
+      life: TURRET_BULLET_LIFE,
+      damage: TURRET_BULLET_DAMAGE,
+      active: true,
+    });
+  }
+
+  // ─── Grabbler monster state machine (抓捕怪) ────────────────
+  // 大体形，抓住玩家拖到随机地点扔下掉血，然后长CD
+
+  private updateGrabblerMonster(monster: Monster, delta: number) {
+    const dt = delta / 1000;
+    const distToPlayer = Phaser.Math.Distance.Between(
+      monster.sprite.x, monster.sprite.y, this.player.x, this.player.y
+    );
+
+    // 被水枪眩晕期间暂停
+    if (monster.stunTimer > 0) {
+      monster.stunTimer -= delta;
+      monster.sprite.setFillStyle(0x666666);
+      return;
+    }
+
+    switch (monster.grabblerState) {
+      // ── 巡逻 + 追击：发现玩家后追上去抓 ──
+      case 'patrol': {
+        monster.sprite.setFillStyle(GRABBLER_COLOR);
+
+        const canSee = distToPlayer < monster.visionRange && !this.isHidden &&
+          !this.lineBlockedByObstacle(monster.sprite.x, monster.sprite.y, this.player.x, this.player.y);
+
+        if (canSee) {
+          // 发现玩家 → 追击
+          monster.isChasing = true;
+          monster.giveUpTimer = monster.giveUpDuration;
+        } else if (monster.isChasing) {
+          monster.giveUpTimer -= delta;
+          if (monster.giveUpTimer <= 0) {
+            monster.isChasing = false;
+          }
+        }
+
+        if (monster.isChasing) {
+          // 追击玩家
+          const dir = new Phaser.Math.Vector2(
+            this.player.x - monster.sprite.x,
+            this.player.y - monster.sprite.y
+          ).normalize();
+          const newX = monster.sprite.x + dir.x * monster.chaseSpeed * dt;
+          const newY = monster.sprite.y + dir.y * monster.chaseSpeed * dt;
+          if (!this.isObstacleAt(newX, monster.sprite.y, 0)) {
+            monster.sprite.x = newX;
+          }
+          if (!this.isObstacleAt(monster.sprite.x, newY, 0)) {
+            monster.sprite.y = newY;
+          }
+
+          // 靠近玩家 → 抓住
+          if (distToPlayer < GRABBLER_GRAB_RANGE && !this.isHidden) {
+            monster.grabblerState = 'grabbing';
+            monster.grabblerTimer = 300; // 抓住0.3秒后开始拖
+            this.isGrabbed = true;
+            // 选一个随机目标点
+            const targetAngle = Math.random() * Math.PI * 2;
+            const targetDist = GRABBLER_DROP_DISTANCE + Phaser.Math.Between(-50, 100);
+            monster.grabblerTargetX = Phaser.Math.Clamp(
+              monster.sprite.x + Math.cos(targetAngle) * targetDist,
+              60, this.mapWidth - 60
+            );
+            monster.grabblerTargetY = Phaser.Math.Clamp(
+              monster.sprite.y + Math.sin(targetAngle) * targetDist,
+              60, this.mapHeight - 60
+            );
+          }
+        } else {
+          // 巡逻
+          monster.patrolTimer += delta;
+          if (monster.patrolTimer > 3000) {
+            monster.patrolTimer = 0;
+            const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+            monster.direction.set(Math.cos(angle), Math.sin(angle));
+          }
+          const distFromHome = Phaser.Math.Distance.Between(
+            monster.sprite.x, monster.sprite.y, monster.homeX, monster.homeY
+          );
+          if (distFromHome > 400) {
+            const toHome = new Phaser.Math.Vector2(
+              monster.homeX - monster.sprite.x, monster.homeY - monster.sprite.y
+            ).normalize();
+            monster.direction.lerp(toHome, 0.05).normalize();
+          }
+          const newX = monster.sprite.x + monster.direction.x * monster.speed * dt;
+          const newY = monster.sprite.y + monster.direction.y * monster.speed * dt;
+          if (!this.isObstacleAt(newX, monster.sprite.y, 0)) {
+            monster.sprite.x = newX;
+          } else {
+            monster.direction.x *= -1;
+          }
+          if (!this.isObstacleAt(monster.sprite.x, newY, 0)) {
+            monster.sprite.y = newY;
+          } else {
+            monster.direction.y *= -1;
+          }
+        }
+        break;
+      }
+
+      // ── 抓住：短暂停顿，玩家被定住 ──
+      case 'grabbing': {
+        monster.grabblerTimer -= delta;
+        monster.sprite.setFillStyle(0xff8800); // 抓住时变橙
+        // 玩家被抓住，不能移动（强制拉到怪物位置）
+        this.player.x = monster.sprite.x;
+        this.player.y = monster.sprite.y;
+
+        if (monster.grabblerTimer <= 0) {
+          monster.grabblerState = 'dragging';
+        }
+        break;
+      }
+
+      // ── 拖拽：拉着玩家跑到目标点 ──
+      case 'dragging': {
+        monster.sprite.setFillStyle(0xff4400);
+        const distToTarget = Phaser.Math.Distance.Between(
+          monster.sprite.x, monster.sprite.y,
+          monster.grabblerTargetX, monster.grabblerTargetY
+        );
+
+        if (distToTarget > 20) {
+          const dir = new Phaser.Math.Vector2(
+            monster.grabblerTargetX - monster.sprite.x,
+            monster.grabblerTargetY - monster.sprite.y
+          ).normalize();
+          const newX = monster.sprite.x + dir.x * monster.grabblerDragSpeed * dt;
+          const newY = monster.sprite.y + dir.y * monster.grabblerDragSpeed * dt;
+          if (!this.isObstacleAt(newX, monster.sprite.y, 0)) {
+            monster.sprite.x = newX;
+          } else {
+            // 撞墙了，重新选目标
+            const targetAngle = Math.random() * Math.PI * 2;
+            monster.grabblerTargetX = Phaser.Math.Clamp(
+              monster.sprite.x + Math.cos(targetAngle) * GRABBLER_DROP_DISTANCE,
+              60, this.mapWidth - 60
+            );
+            monster.grabblerTargetY = Phaser.Math.Clamp(
+              monster.sprite.y + Math.sin(targetAngle) * GRABBLER_DROP_DISTANCE,
+              60, this.mapHeight - 60
+            );
+          }
+          if (!this.isObstacleAt(monster.sprite.x, newY, 0)) {
+            monster.sprite.y = newY;
+          } else {
+            const targetAngle = Math.random() * Math.PI * 2;
+            monster.grabblerTargetX = Phaser.Math.Clamp(
+              monster.sprite.x + Math.cos(targetAngle) * GRABBLER_DROP_DISTANCE,
+              60, this.mapWidth - 60
+            );
+            monster.grabblerTargetY = Phaser.Math.Clamp(
+              monster.sprite.y + Math.sin(targetAngle) * GRABBLER_DROP_DISTANCE,
+              60, this.mapHeight - 60
+            );
+          }
+          // 玩家被拖着走
+          this.player.x = monster.sprite.x;
+          this.player.y = monster.sprite.y;
+        } else {
+          // 到达目标点 → 扔下
+          monster.grabblerState = 'dropping';
+          monster.grabblerTimer = 200;
+        }
+        break;
+      }
+
+      // ── 扔下：玩家掉血 + 击退 ──
+      case 'dropping': {
+        monster.grabblerTimer -= delta;
+        monster.sprite.setFillStyle(0xff0000);
+
+        if (monster.grabblerTimer <= 0) {
+          // 造成伤害
+          if (this.hasShield) {
+            this.hasShield = false;
+            this.showMessage('🛡 护盾抵挡了抓捕怪的摔投！');
+            this.time.delayedCall(1000, () => this.hideMessage());
+          } else {
+            this.health -= GRABBLER_DROP_DAMAGE;
+            this.healthText.setText(`生命: ${this.health}`);
+            // 击退玩家
+            const kx = this.player.x - monster.sprite.x;
+            const ky = this.player.y - monster.sprite.y;
+            const klen = Math.sqrt(kx * kx + ky * ky) || 1;
+            this.player.x += (kx / klen) * 40;
+            this.player.y += (ky / klen) * 40;
+            // 闪烁
+            this.player.setFillStyle(0xff0000);
+            this.time.delayedCall(300, () => {
+              if (!this.isDead) this.player.setFillStyle(0x00ff00);
+            });
+            this.cam.shake(200, 0.015);
+            if (this.health <= 0) {
+              this.die();
+            }
+          }
+          this.damageCooldown = 800;
+          monster.grabblerState = 'recovery';
+          monster.grabblerTimer = GRABBLER_RECOVERY_DURATION;
+          monster.isChasing = false;
+          this.isGrabbed = false; // 释放玩家
+        }
+        break;
+      }
+
+      // ── 恢复CD：原地不动，较长时间 ──
+      case 'recovery': {
+        monster.grabblerTimer -= delta;
+        // CD期间变暗，闪烁
+        const blink = Math.floor(monster.grabblerTimer / 500) % 2 === 0;
+        monster.sprite.setFillStyle(blink ? 0x553311 : 0x332208);
+
+        if (monster.grabblerTimer <= 0) {
+          monster.grabblerState = 'patrol';
+        }
+        break;
+      }
+    }
+  }
+
+  // ─── Bullets (炮塔怪子弹) ───────────────────────────────────
+
+  private updateBullets(delta: number) {
+    const dt = delta / 1000;
+
+    for (const bullet of this.bullets) {
+      if (!bullet.active) continue;
+
+      // 移动
+      const newX = bullet.sprite.x + bullet.vx * dt;
+      const newY = bullet.sprite.y + bullet.vy * dt;
+
+      // 撞墙 → 消失
+      if (this.isObstacleAt(newX, newY, 0)) {
+        bullet.sprite.destroy();
+        bullet.active = false;
+        continue;
+      }
+
+      bullet.sprite.x = newX;
+      bullet.sprite.y = newY;
+
+      // 寿命到期 → 消失
+      bullet.life -= delta;
+      if (bullet.life <= 0) {
+        bullet.sprite.destroy();
+        bullet.active = false;
+        continue;
+      }
+
+      // 命中玩家
+      const dist = Phaser.Math.Distance.Between(
+        bullet.sprite.x, bullet.sprite.y, this.player.x, this.player.y
+      );
+      if (dist < 14 + TURRET_BULLET_RADIUS && !this.isHidden && this.damageCooldown <= 0) {
+        if (this.hasShield) {
+          this.hasShield = false;
+          this.showMessage('🛡 护盾抵挡了子弹！');
+          this.time.delayedCall(1000, () => this.hideMessage());
+          this.damageCooldown = 1000;
+        } else {
+          this.health -= bullet.damage;
+          this.healthText.setText(`生命: ${this.health}`);
+          this.damageCooldown = 600;
+          this.player.setFillStyle(0xff0000);
+          this.time.delayedCall(200, () => {
+            if (!this.isDead) this.player.setFillStyle(0x00ff00);
+          });
+          if (this.health <= 0) {
+            this.die();
+          }
+        }
+        bullet.sprite.destroy();
+        bullet.active = false;
+      }
+    }
+
+    // 清理已销毁的子弹
+    this.bullets = this.bullets.filter(b => b.active);
+  }
+
   /** 陷阱爆炸：范围内造成伤害 */
   private dealTrapExplosionDamage(monster: Monster) {
     const dist = Phaser.Math.Distance.Between(
@@ -2002,6 +2656,10 @@ export class CleanupEvacScene extends Phaser.Scene {
     for (const monster of this.monsters) {
       // 陷阱型怪物有自己的攻击逻辑（updateTrapMonster 中处理），跳过碰撞检测
       if (monster.isTrap) continue;
+      // 炮塔型怪物远程攻击，不靠碰撞造成伤害
+      if (monster.isTurret) continue;
+      // 抓捕型怪物有自己的摔投伤害逻辑，跳过碰撞检测
+      if (monster.isGrabbler) continue;
 
       const dist = Phaser.Math.Distance.Between(
         this.player.x, this.player.y, monster.sprite.x, monster.sprite.y
