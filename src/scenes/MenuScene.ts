@@ -120,7 +120,7 @@ export class MenuScene extends Phaser.Scene {
     },
     {
       key: 'StoneGambleScene',
-      name: '赌石撤离',
+      name: '赌石撤离(精简版)',
       description: '找到原石，用水枪逐面清洗石皮→逐步揭晓内部价值！废料5~15还是帝王绿800~1200？15%诅咒石完全揭晓会召唤怪物！右键止损放弃，收集价值1000后撤离！Shift疾跑 | 左键喷射 | 右键止损',
     },
     // Add new prototypes here
