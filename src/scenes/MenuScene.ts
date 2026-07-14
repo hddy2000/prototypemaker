@@ -101,12 +101,17 @@ export class MenuScene extends Phaser.Scene {
     {
       key: 'BlindBoxHorrorScene',
       name: '盲盒惊魂',
-      description: '携带盲盒探索三层鬼屋，找到破解台开盒：可能获得财宝、召唤怪物或BOSS！收集财宝逃离！',
+      description: '选择盲盒大小（小/中/大=1/2/3次破解），每次破解探索一层鬼屋！破解台开盲盒：财宝、怪物、BOSS或特殊事件！完成每层撤离任务（收集、解谜、限时、激活、封印）才能上楼！财宝分普通/稀有/史诗/传说4档品质，楼层越高奖励越好但风险越大！',
     },
     {
       key: 'CleanupMultiplayerScene',
       name: '多人清扫撤离',
       description: '多人合作版！一起用水枪清扫污渍收集宝物，团队价值达1000后到撤离点撤离！被怪物打倒后倒地，队友靠近按E复活！Shift疾跑 | E躲藏/复活/撤离 | 左键喷射',
+    },
+    {
+      key: 'BlindBoxMultiplayerScene',
+      name: '多人盲盒惊魂',
+      description: '【多人联机】合作PvE版盲盒惊魂！投票选盲盒大小，团队共享破解次数和财宝分数。5层鬼屋探索，每层完成撤离任务才能上楼。被鬼打倒倒地15秒，队友靠近按E复活！E交互/复活 | F上楼 | 1/2/3投票',
     },
     // Add new prototypes here
   ];

@@ -21,6 +21,7 @@ import { AbyssHotelScene } from './scenes/AbyssHotelScene';
 import { CleanupEvacScene } from './scenes/CleanupEvacScene';
 import { BlindBoxHorrorScene } from './scenes/BlindBoxHorrorScene';
 import { CleanupMultiplayerScene } from './scenes/CleanupMultiplayerScene';
+import { BlindBoxMultiplayerScene } from './scenes/BlindBoxMultiplayerScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -39,7 +40,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene, RitualRoomsScene, TrapHunterScene, NameTagScene, StealScene, MidnightGambleScene, AbyssHotelScene, CleanupEvacScene, BlindBoxHorrorScene, CleanupMultiplayerScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene, RitualRoomsScene, TrapHunterScene, NameTagScene, StealScene, MidnightGambleScene, AbyssHotelScene, CleanupEvacScene, BlindBoxHorrorScene, CleanupMultiplayerScene, BlindBoxMultiplayerScene],
 };
 
 (window as any).game = new Phaser.Game(config);
