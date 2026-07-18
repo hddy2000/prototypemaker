@@ -9,6 +9,25 @@ interface Obstacle {
   h: number;
 }
 
+interface HideSpot {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: 'closet' | 'stall' | 'locker';
+  occupied: boolean;
+}
+
+interface Switch {
+  x: number;
+  y: number;
+  activated: boolean;
+  activateProgress: number; // 0~1
+  sprite: Phaser.GameObjects.Rectangle;
+  glowSprite: Phaser.GameObjects.Arc;
+  promptText: Phaser.GameObjects.Text;
+}
+
 interface Monster {
   sprite: Phaser.GameObjects.Rectangle;
   speed: number;
@@ -27,21 +46,6 @@ interface Monster {
   attackCooldown: number;
 }
 
-interface Stone {
-  x: number;
-  y: number;
-  radius: number;
-  faces: { cleaned: boolean; clueShown: boolean }[];
-  fullyRevealed: boolean;
-  abandoned: boolean;
-  faceSprites: Phaser.GameObjects.Graphics[];
-  innerSprite: Phaser.GameObjects.Graphics;
-  stoneType: StoneType;
-  stoneValue: number;
-  cursed: boolean;
-  revealStage: number; // 0=未开始, 1=第一面, 2=第二面, 3=完全揭晓
-}
-
 type StoneType = 'trash' | 'common' | 'good' | 'rare' | 'legendary' | 'medkit' | 'shield';
 
 interface StoneTier {
@@ -52,23 +56,40 @@ interface StoneTier {
   minVal: number;
   maxVal: number;
   weight: number;
-  clue1: string;
-  clue2: string;
+  clue: string;       // 清洗后显示的颜色线索
   isUtility: boolean;
 }
 
 const STONE_TIERS: StoneTier[] = [
-  { type: 'trash',     color: 0x555555, glowColor: 0x666666, name: '废料',   minVal: 5,   maxVal: 15,   weight: 40, clue1: '暗灰色石质…',           clue2: '灰色偏暗，裂纹很多…',     isUtility: false },
-  { type: 'common',    color: 0xddccaa, glowColor: 0xddccaa, name: '普通石', minVal: 20,  maxVal: 50,   weight: 25, clue1: '米白色光泽…',           clue2: '白色石质，一般…',         isUtility: false },
-  { type: 'good',      color: 0x44dd44, glowColor: 0x44ff44, name: '好玉',   minVal: 80,  maxVal: 150,  weight: 15, clue1: '淡绿色！有戏！',         clue2: '绿色清晰，不错！',       isUtility: false },
-  { type: 'rare',      color: 0x00cc44, glowColor: 0x00ff44, name: '极品玉', minVal: 200, maxVal: 500,  weight: 8,  clue1: '绿色明显！感觉很好！',   clue2: '鲜艳绿色！很可能值钱！', isUtility: false },
-  { type: 'legendary', color: 0x00ff44, glowColor: 0x00ff88, name: '帝王绿', minVal: 800, maxVal: 1200, weight: 4,  clue1: '浓郁翠绿！可能是极品！', clue2: '帝王色！极品中的极品！', isUtility: false },
-  { type: 'medkit',    color: 0xff4444, glowColor: 0xff6666, name: '药石',   minVal: 0,   maxVal: 0,    weight: 5,  clue1: '米白色光泽…',           clue2: '白色石质…',               isUtility: true },
-  { type: 'shield',    color: 0x44aaff, glowColor: 0x66ccff, name: '盾石',   minVal: 0,   maxVal: 0,    weight: 3,  clue1: '米白色光泽…',           clue2: '白色石质…',               isUtility: true },
+  { type: 'trash',     color: 0x555555, glowColor: 0x666666, name: '废料',   minVal: 5,   maxVal: 15,   weight: 40, clue: '灰色…',           isUtility: false },
+  { type: 'common',    color: 0xddccaa, glowColor: 0xddccaa, name: '普通石', minVal: 20,  maxVal: 50,   weight: 25, clue: '白色…',           isUtility: false },
+  { type: 'good',      color: 0x44dd44, glowColor: 0x44ff44, name: '好玉',   minVal: 80,  maxVal: 150,  weight: 15, clue: '淡绿色！',         isUtility: false },
+  { type: 'rare',      color: 0x00cc44, glowColor: 0x00ff44, name: '极品玉', minVal: 200, maxVal: 500,  weight: 8,  clue: '翠绿色！！',       isUtility: false },
+  { type: 'legendary', color: 0x00ff44, glowColor: 0x00ff88, name: '帝王绿', minVal: 800, maxVal: 1200, weight: 4,  clue: '帝王绿！！！',     isUtility: false },
+  { type: 'medkit',    color: 0xff4444, glowColor: 0xff6666, name: '药石',   minVal: 0,   maxVal: 0,    weight: 5,  clue: '红色…',           isUtility: true },
+  { type: 'shield',    color: 0x44aaff, glowColor: 0x66ccff, name: '盾石',   minVal: 0,   maxVal: 0,    weight: 3,  clue: '蓝色…',           isUtility: true },
 ];
 
 const STONE_TIERS_TOTAL_WEIGHT = STONE_TIERS.reduce((s, t) => s + t.weight, 0);
 const CURSED_CHANCE = 0.15;
+
+// ─── Stone state machine ─────────────────────────────────────
+// 0=未清洗  1=清洗中  2=已清洗(待决策)  3=已拿走  4=已锤  5=已放弃
+type StoneState = 0 | 1 | 2 | 3 | 4 | 5;
+
+interface Stone {
+  x: number;
+  y: number;
+  radius: number;
+  stoneType: StoneType;
+  stoneValue: number;
+  cursed: boolean;
+  state: StoneState;
+  cleanProgress: number;     // 0~1 清洗进度
+  shellSprite: Phaser.GameObjects.Graphics;   // 外皮
+  innerSprite: Phaser.GameObjects.Graphics;   // 内部颜色
+  promptText: Phaser.GameObjects.Text;         // 浮动提示
+}
 
 // ─── Constants ─────────────────────────────────────────────
 const PLAYER_BASE_SPEED = 160;
@@ -78,8 +99,23 @@ const STAMINA_DRAIN_RATE = 35;
 const STAMINA_REGEN_RATE = 20;
 const STAMINA_SPRINT_MIN = 5;
 
-const SPRAY_RANGE = 160;
-const SPRAY_ANGLE = Math.PI / 12;
+const CLEAN_DURATION = 1500;   // 清洗1.5秒
+const HAMMER_REVEAL_DELAY = 1500; // 锤下后1.5秒揭晓
+const INTERACT_RANGE = 60;    // 交互距离（拿走/锤）
+const SPRAY_RANGE = 160;     // 水枪射程
+const SPRAY_ANGLE = Math.PI / 12; // 水枪半锥角(15°)
+const MONSTER_STUN_DURATION = 2000; // 水枪喷怪物眩晕2秒
+
+// ─── Constants: hide & aggro ────────────────────────────────
+const HIDE_LOSE_AGGRO_TIME = 3000; // 躲藏后3秒才脱仇恨
+const HIDE_SPOT_RANGE = 40;       // 进入躲藏点的判定距离
+
+// ─── Constants: switches & key ──────────────────────────────
+const SWITCH_COUNT = 3;
+const SWITCH_ACTIVATE_DURATION = 2000; // 拉闸需要按住2秒
+const SWITCH_INTERACT_RANGE = 50;
+const KEY_PICKUP_RANGE = 40;
+const SWITCH_ALERT_RANGE = 350;        // 拉闸引怪范围
 
 // ─── Scene ────────────────────────────────────────────────────
 
@@ -94,6 +130,7 @@ export class StoneGambleScene extends Phaser.Scene {
   private mapWidth = 2400;
   private mapHeight = 1600;
   private obstacles: Obstacle[] = [];
+  private hideSpots: HideSpot[] = [];
   private mapGraphics!: Phaser.GameObjects.Graphics;
 
   // Fog of war
@@ -113,13 +150,13 @@ export class StoneGambleScene extends Phaser.Scene {
   private monsters: Monster[] = [];
   private exit!: Phaser.GameObjects.Rectangle;
 
-  // Water gun
-  private isSpraying = false;
-  private aimAngle = 0;
+  // Interaction
+  private currentTarget: Stone | null = null;  // 当前水枪瞄准的石头
+  private isSpraying = false;                    // 正在喷射水枪
+  private isHammering = false;                   // 锤子动画中
+  private hammerTarget: Stone | null = null;
+  private aimAngle = 0;                           // 水枪瞄准角度
   private sprayGraphics!: Phaser.GameObjects.Graphics;
-  private sprayTimer = 0;
-  private sprayTarget: Stone | null = null;
-  private readonly SPRAY_FACE_DURATION = 800; // ms to clean one face
 
   // Player stats
   private health = 100;
@@ -132,6 +169,26 @@ export class StoneGambleScene extends Phaser.Scene {
   private stamina = STAMINA_MAX;
   private isSprinting = false;
   private staminaBar!: Phaser.GameObjects.Graphics;
+
+  // Hide
+  private isHidden = false;
+  private hiddenSpot: HideSpot | null = null;
+  private eKey!: Phaser.Input.Keyboard.Key;
+
+  // Switches & Key
+  private switches: Switch[] = [];
+  private hasKey = false;
+  private keySprite!: Phaser.GameObjects.Arc;       // 钥匙图标（跟随玩家或在地上）
+  private keyGroundX = 0;
+  private keyGroundY = 0;
+  private keyOnGround = true;
+  private gKey!: Phaser.Input.Keyboard.Key;
+  private fKey!: Phaser.Input.Keyboard.Key;
+  private isActivatingSwitch = false;
+  private currentSwitch: Switch | null = null;
+  private activatedCount = 0;
+  private switchUIText!: Phaser.GameObjects.Text;
+  private keyUIText!: Phaser.GameObjects.Text;
 
   // Evacuation
   private isEvacuating = false;
@@ -148,7 +205,8 @@ export class StoneGambleScene extends Phaser.Scene {
   private statusText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private evacText!: Phaser.GameObjects.Text;
-  private clueText!: Phaser.GameObjects.Text;
+  private promptText!: Phaser.GameObjects.Text;   // 屏幕中央操作提示
+  private hidePromptText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'StoneGambleScene' });
@@ -165,32 +223,47 @@ export class StoneGambleScene extends Phaser.Scene {
     this.isEvacuating = false;
     this.evacTimer = 0;
     this.isSpraying = false;
+    this.isHammering = false;
+    this.hammerTarget = null;
+    this.currentTarget = null;
     this.aimAngle = 0;
-    this.sprayTimer = 0;
-    this.sprayTarget = null;
     this.stones = [];
     this.monsters = [];
     this.obstacles = [];
+    this.hideSpots = [];
+    this.switches = [];
+    this.hasKey = false;
+    this.keyOnGround = true;
+    this.isActivatingSwitch = false;
+    this.currentSwitch = null;
+    this.activatedCount = 0;
     this.stamina = STAMINA_MAX;
     this.isSprinting = false;
+    this.isHidden = false;
+    this.hiddenSpot = null;
 
     this.cam = this.cameras.main;
     this.cam.setBounds(0, 0, this.mapWidth, this.mapHeight);
 
     this.generateBuilding();
+    this.generateHideRooms();
     this.drawMap();
     this.createPlayer();
     this.createStones();
     this.createMonsters();
     this.createExit();
+    this.createSwitches();
+    this.createKeyItem();
     this.createFog();
     this.createUI();
     this.setupInput();
 
     this.cam.startFollow(this.player, true, 0.1, 0.1);
 
-    this.showMessage('🎰 赌石撤离！\n\n找到石头，用水枪清洗石皮\n逐步揭晓内部价值——废料还是帝王绿？\n\n左键喷射清洗 | 右键放弃（止损）\nShift疾跑 | 收集价值1000后撤离！\n\n小心：15%的石头是诅咒石，完全揭晓会召唤怪物！');
-    this.time.delayedCall(6000, () => this.hideMessage());
+    this.sprayGraphics = this.add.graphics();
+    this.sprayGraphics.setDepth(7);
+
+    this.showMessage('🎰 赌石撤离！\n\n左键 = 水枪（清洗石头 / 喷晕怪物）\n右键 = 锤子（清洗后才能锤）\n\n清洗石头看颜色 → 左键稳拿 / 右键锤赌一把！\nShift疾跑 | E键躲藏 | G键拾取/放下钥匙\n\n找到钥匙 → 拉3个电闸 → 撤离点开启！', 7000);
   }
 
   // ─── Map generation ─────────────────────────────────────────
@@ -259,6 +332,69 @@ export class StoneGambleScene extends Phaser.Scene {
     }
   }
 
+  // ─── Hide rooms (躲藏小房间) ────────────────────────────────
+
+  private generateHideRooms() {
+    this.hideSpots = [];
+    const roomCount = 7;
+    const roomSize = 90;
+    const wallT = 12;       // 墙厚度
+    const doorGap = 36;     // 门缺口宽度
+    let placed = 0;
+    let attempts = 0;
+
+    while (placed < roomCount && attempts < 500) {
+      attempts++;
+      const x = Phaser.Math.Between(120, this.mapWidth - 120 - roomSize);
+      const y = Phaser.Math.Between(120, this.mapHeight - 120 - roomSize);
+
+      // 避开起点和撤离点
+      if (Phaser.Math.Distance.Between(x + roomSize / 2, y + roomSize / 2, 80, 80) < 200) continue;
+      if (Phaser.Math.Distance.Between(x + roomSize / 2, y + roomSize / 2, this.mapWidth - 80, this.mapHeight - 80) < 200) continue;
+
+      // 避开已有 hideSpot
+      let tooClose = false;
+      for (const hs of this.hideSpots) {
+        if (Phaser.Math.Distance.Between(x + roomSize / 2, y + roomSize / 2, hs.x + hs.w / 2, hs.y + hs.h / 2) < 250) {
+          tooClose = true; break;
+        }
+      }
+      if (tooClose) continue;
+
+      // 避开已有障碍物重叠
+      let overlaps = false;
+      for (const obs of this.obstacles) {
+        if (x < obs.x + obs.w + 20 && x + roomSize + 20 > obs.x &&
+            y < obs.y + obs.h + 20 && y + roomSize + 20 > obs.y) {
+          overlaps = true; break;
+        }
+      }
+      if (overlaps) continue;
+
+      // 生成四面墙，每面留一个门缺口
+      // 上墙
+      this.obstacles.push({ x: x - wallT, y: y - wallT, w: (roomSize - doorGap) / 2 + wallT, h: wallT });
+      this.obstacles.push({ x: x + (roomSize + doorGap) / 2, y: y - wallT, w: (roomSize - doorGap) / 2 + wallT, h: wallT });
+      // 下墙
+      this.obstacles.push({ x: x - wallT, y: y + roomSize, w: (roomSize - doorGap) / 2 + wallT, h: wallT });
+      this.obstacles.push({ x: x + (roomSize + doorGap) / 2, y: y + roomSize, w: (roomSize - doorGap) / 2 + wallT, h: wallT });
+      // 左墙
+      this.obstacles.push({ x: x - wallT, y: y, w: wallT, h: (roomSize - doorGap) / 2 });
+      this.obstacles.push({ x: x - wallT, y: y + (roomSize + doorGap) / 2, w: wallT, h: (roomSize - doorGap) / 2 });
+      // 右墙
+      this.obstacles.push({ x: x + roomSize, y: y, w: wallT, h: (roomSize - doorGap) / 2 });
+      this.obstacles.push({ x: x + roomSize, y: y + (roomSize + doorGap) / 2, w: wallT, h: (roomSize - doorGap) / 2 });
+
+      const kinds: HideSpot['kind'][] = ['closet', 'stall', 'locker'];
+      this.hideSpots.push({
+        x, y, w: roomSize, h: roomSize,
+        kind: Phaser.Utils.Array.GetRandom(kinds),
+        occupied: false,
+      });
+      placed++;
+    }
+  }
+
   private drawMap() {
     this.mapGraphics = this.add.graphics();
 
@@ -281,6 +417,22 @@ export class StoneGambleScene extends Phaser.Scene {
       this.mapGraphics.fillRect(obs.x, obs.y, obs.w, obs.h);
       this.mapGraphics.lineStyle(1, 0x555577, 0.5);
       this.mapGraphics.strokeRect(obs.x, obs.y, obs.w, obs.h);
+    }
+
+    // 躲藏小房间地板（暗蓝色区分）
+    this.mapGraphics.fillStyle(0x1a2a4e, 0.6);
+    for (const hs of this.hideSpots) {
+      this.mapGraphics.fillRect(hs.x, hs.y, hs.w, hs.h);
+      // 房间边框
+      this.mapGraphics.lineStyle(2, 0x4466aa, 0.4);
+      this.mapGraphics.strokeRect(hs.x, hs.y, hs.w, hs.h);
+    }
+
+    // 躲藏点标签
+    for (const hs of this.hideSpots) {
+      this.add.text(hs.x + hs.w / 2, hs.y + hs.h / 2, '躲避点\n按E', {
+        fontSize: '14px', color: '#6688cc', align: 'center',
+      }).setOrigin(0.5).setDepth(2.5);
     }
   }
 
@@ -318,7 +470,7 @@ export class StoneGambleScene extends Phaser.Scene {
       const stoneValue = tier.isUtility ? 0 : Phaser.Math.Between(tier.minVal, tier.maxVal);
       const cursed = !tier.isUtility && Math.random() < CURSED_CHANCE;
 
-      // 内部石芯
+      // 内部颜色（清洗后显示）
       const innerG = this.add.graphics();
       innerG.setPosition(x, y);
       innerG.setDepth(1.5);
@@ -328,43 +480,32 @@ export class StoneGambleScene extends Phaser.Scene {
         innerG.fillStyle(tier.glowColor, 0.3);
         innerG.fillCircle(0, 0, radius * 1.0);
       }
-      innerG.setAlpha(0);
+      innerG.setAlpha(0); // 初始隐藏
 
-      // 外皮（3面石皮）
+      // 外皮（完整覆盖）
       const dirtColors = [0x3a2a1a, 0x2a2a2a, 0x3a322a, 0x2a1a1a];
       const dirtColor = Phaser.Utils.Array.GetRandom(dirtColors);
-      const faceOffset = Math.random() * Math.PI * 2;
-      const faceSprites: Phaser.GameObjects.Graphics[] = [];
-      const sectorHalf = (Math.PI / 3) * 0.92;
-      for (let f = 0; f < 3; f++) {
-        const fc = faceOffset + (f * Math.PI * 2 / 3);
-        const sa = fc - sectorHalf;
-        const ea = fc + sectorHalf;
-        const fg = this.add.graphics();
-        fg.fillStyle(dirtColor, 0.85);
-        fg.beginPath();
-        fg.slice(0, 0, radius * 1.1, sa, ea);
-        fg.fillPath();
-        fg.setPosition(x, y);
-        fg.setDepth(2);
-        faceSprites.push(fg);
-      }
+      const shellG = this.add.graphics();
+      shellG.fillStyle(dirtColor, 0.9);
+      shellG.fillCircle(0, 0, radius * 1.1);
+      shellG.setPosition(x, y);
+      shellG.setDepth(2);
+
+      // 浮动提示文字
+      const prompt = this.add.text(x, y - radius - 12, '', {
+        fontSize: '12px', color: '#ffff00',
+      }).setOrigin(0.5).setDepth(6);
 
       this.stones.push({
         x, y, radius,
-        faces: [
-          { cleaned: false, clueShown: false },
-          { cleaned: false, clueShown: false },
-          { cleaned: false, clueShown: false },
-        ],
-        fullyRevealed: false,
-        abandoned: false,
-        faceSprites,
-        innerSprite: innerG,
         stoneType: tier.type,
         stoneValue,
         cursed,
-        revealStage: 0,
+        state: 0,
+        cleanProgress: 0,
+        shellSprite: shellG,
+        innerSprite: innerG,
+        promptText: prompt,
       });
       placed++;
       attempts++;
@@ -432,6 +573,75 @@ export class StoneGambleScene extends Phaser.Scene {
     this.exit = this.add.rectangle(this.mapWidth - 80, this.mapHeight - 80, 50, 50, 0x00ffff);
     this.exit.setAlpha(0.3);
     this.exit.setDepth(3);
+  }
+
+  // ─── Switches (电闸) ─────────────────────────────────────────
+
+  private createSwitches() {
+    let placed = 0;
+    let attempts = 0;
+
+    while (placed < SWITCH_COUNT && attempts < 500) {
+      attempts++;
+      const x = Phaser.Math.Between(300, this.mapWidth - 300);
+      const y = Phaser.Math.Between(300, this.mapHeight - 300);
+
+      // 避开起点和撤离点
+      if (Phaser.Math.Distance.Between(x, y, 80, 80) < 400) continue;
+      if (Phaser.Math.Distance.Between(x, y, this.mapWidth - 80, this.mapHeight - 80) < 300) continue;
+
+      // 避开障碍物
+      if (this.isInsideObstacle(x, y, 30)) continue;
+
+      // 避开其他电闸
+      let tooClose = false;
+      for (const sw of this.switches) {
+        if (Phaser.Math.Distance.Between(x, y, sw.x, sw.y) < 400) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+
+      // 电闸本体
+      const sprite = this.add.rectangle(x, y, 30, 40, 0xff4400);
+      sprite.setDepth(3);
+      sprite.setStrokeStyle(2, 0xffaa00);
+
+      // 发光圈
+      const glow = this.add.circle(x, y, 35, 0xffaa00, 0.3);
+      glow.setDepth(2.5);
+
+      // 提示文字
+      const prompt = this.add.text(x, y - 30, '', {
+        fontSize: '14px', color: '#ffaa00',
+        stroke: '#000000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(6);
+
+      this.switches.push({
+        x, y,
+        activated: false,
+        activateProgress: 0,
+        sprite,
+        glowSprite: glow,
+        promptText: prompt,
+      });
+      placed++;
+    }
+  }
+
+  // ─── Key item (钥匙) ─────────────────────────────────────────
+
+  private createKeyItem() {
+    // 钥匙在起点附近
+    this.keyGroundX = 120;
+    this.keyGroundY = 120;
+    this.keyOnGround = true;
+    this.hasKey = false;
+
+    this.keySprite = this.add.circle(this.keyGroundX, this.keyGroundY, 10, 0xffff00);
+    this.keySprite.setStrokeStyle(2, 0xffaa00);
+    this.keySprite.setDepth(4);
   }
 
   // ─── Fog of war ──────────────────────────────────────────────
@@ -504,7 +714,15 @@ export class StoneGambleScene extends Phaser.Scene {
       fontSize: '18px', color: '#ffdd00',
     }).setScrollFactor(0).setDepth(20);
 
-    this.statusText = this.add.text(16, 68, '', {
+    this.switchUIText = this.add.text(16, 64, '电闸: 0/3', {
+      fontSize: '18px', color: '#ffaa00',
+    }).setScrollFactor(0).setDepth(20);
+
+    this.keyUIText = this.add.text(16, 88, '', {
+      fontSize: '16px', color: '#ffff00',
+    }).setScrollFactor(0).setDepth(20);
+
+    this.statusText = this.add.text(16, 112, '', {
       fontSize: '14px', color: '#ff8844',
     }).setScrollFactor(0).setDepth(20);
 
@@ -512,8 +730,8 @@ export class StoneGambleScene extends Phaser.Scene {
       fontSize: '32px', color: '#00ff00', align: 'center',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
 
-    this.clueText = this.add.text(400, 540, '', {
-      fontSize: '16px', color: '#ffff00', align: 'center',
+    this.promptText = this.add.text(400, 540, '', {
+      fontSize: '16px', color: '#ffffff', align: 'center',
       backgroundColor: '#000000aa',
       padding: { x: 12, y: 6 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
@@ -524,6 +742,12 @@ export class StoneGambleScene extends Phaser.Scene {
 
     this.staminaBar = this.add.graphics();
     this.staminaBar.setScrollFactor(0).setDepth(20);
+
+    this.hidePromptText = this.add.text(400, 560, '', {
+      fontSize: '18px', color: '#6688cc', align: 'center',
+      backgroundColor: '#000000aa',
+      padding: { x: 10, y: 4 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
 
     const backBg = this.add.rectangle(730, 30, 110, 30, 0x333333, 0.85)
       .setScrollFactor(0).setDepth(29);
@@ -559,15 +783,6 @@ export class StoneGambleScene extends Phaser.Scene {
       this.scoreText.setText(newText);
       if (this.score >= this.goalScore) {
         this.scoreText.setColor('#00ff00');
-        this.exit.setAlpha(0.8);
-        this.tweens.add({
-          targets: this.exit,
-          alpha: { from: 0.4, to: 0.9 },
-          duration: 1000,
-          yoyo: true,
-          repeat: -1,
-          ease: 'Sine.inOut',
-        });
       } else {
         this.scoreText.setColor('#ffdd00');
       }
@@ -581,12 +796,36 @@ export class StoneGambleScene extends Phaser.Scene {
     if (this.statusText.text !== newText) {
       this.statusText.setText(newText);
     }
+
+    // 更新电闸UI
+    const switchText = `电闸: ${this.activatedCount}/${SWITCH_COUNT}`;
+    if (this.switchUIText.text !== switchText) {
+      this.switchUIText.setText(switchText);
+      if (this.activatedCount >= SWITCH_COUNT) {
+        this.switchUIText.setColor('#00ff00');
+      }
+    }
+
+    // 更新钥匙UI
+    const keyText = this.hasKey ? '🔑 持有钥匙' : (this.keyOnGround ? '' : '');
+    if (this.keyUIText.text !== keyText) {
+      this.keyUIText.setText(keyText);
+    }
   }
 
+  private messageTimer: Phaser.Time.TimerEvent | null = null;
+
   private showMessage(text: string, duration = 3000) {
+    if (this.messageTimer) {
+      this.messageTimer.remove(false);
+      this.messageTimer = null;
+    }
     this.messageText.setText(text).setVisible(true);
     if (duration < 999999) {
-      this.time.delayedCall(duration, () => this.hideMessage());
+      this.messageTimer = this.time.delayedCall(duration, () => {
+        this.messageTimer = null;
+        this.hideMessage();
+      });
     }
   }
 
@@ -601,25 +840,45 @@ export class StoneGambleScene extends Phaser.Scene {
     this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as any;
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.shiftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+    this.eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    this.gKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.G);
+    this.fKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
 
     this.input.mouse?.disableContextMenu();
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.isDead || this.isWon || this.isHammering) return;
+
       if (pointer.leftButtonDown()) {
-        this.isSpraying = true;
+        // ── 左键：水枪（清洗石头 / 喷晕怪物）──
+        // 拿着钥匙时不能用水枪
+        if (!this.hasKey) {
+          this.isSpraying = true;
+          // 如果近处有已清洗的石头，左键也直接拿走
+          const target = this.findNearestStone();
+          if (target && target.state === 2) {
+            this.takeStone(target);
+          }
+        }
       }
+
       if (pointer.rightButtonDown()) {
-        this.tryAbandonStone();
+        // ── 右键：锤子 ──
+        // 拿着钥匙时不能用锤子
+        if (!this.hasKey) {
+          const target = this.findNearestStone();
+          if (target && target.state === 2) {
+            this.hammerStone(target);
+          }
+        }
       }
     });
+
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       if (!pointer.leftButtonDown()) {
         this.isSpraying = false;
       }
     });
-
-    this.sprayGraphics = this.add.graphics();
-    this.sprayGraphics.setDepth(7);
   }
 
   // ─── Update loop ─────────────────────────────────────────────
@@ -637,17 +896,59 @@ export class StoneGambleScene extends Phaser.Scene {
       return;
     }
 
+    // E 键躲藏/离开
+    if (Phaser.Input.Keyboard.JustDown(this.eKey)) {
+      this.tryHide();
+    }
+
+    // G 键拾取/放下钥匙
+    if (Phaser.Input.Keyboard.JustDown(this.gKey)) {
+      this.toggleKey();
+    }
+
+    // F 键拉闸（按住）
+    this.updateSwitchActivation(delta);
+
+    // 躲避点提示
+    let nearHide = false;
+    if (!this.isHidden) {
+      for (const hs of this.hideSpots) {
+        const cx = hs.x + hs.w / 2;
+        const cy = hs.y + hs.h / 2;
+        if (Phaser.Math.Distance.Between(this.player.x, this.player.y, cx, cy) < HIDE_SPOT_RANGE + 20) {
+          nearHide = true;
+          break;
+        }
+      }
+    }
+    this.hidePromptText.setText(nearHide ? '按 E 躲避' : '');
+
     const pointer = this.input.activePointer;
     const cam = this.cameras.main;
     const mouseWorldX = pointer.x + cam.scrollX;
     const mouseWorldY = pointer.y + cam.scrollY;
     this.aimAngle = Math.atan2(mouseWorldY - this.player.y, mouseWorldX - this.player.x);
 
-    this.handlePlayerMovement(delta);
-    this.updateSpray(delta);
-    this.updateStones(delta);
+    // 躲藏时不能移动/喷射，但体力恢复和雾仍更新
+    if (!this.isHidden) {
+      this.handlePlayerMovement(delta);
+      // 拿着钥匙时不能喷射
+      if (!this.hasKey) {
+        this.updateSpray(delta);
+      } else {
+        this.sprayGraphics.clear();
+        this.isSpraying = false;
+      }
+    } else {
+      this.sprayGraphics.clear();
+      this.isSpraying = false;
+      // 体力恢复
+      this.stamina = Math.min(STAMINA_MAX, this.stamina + STAMINA_REGEN_RATE * (delta / 1000));
+    }
     this.updateMonsters(delta);
     this.checkMonsterCollision();
+    this.updateKeyPosition();
+    this.updateSwitchPrompts();
     this.checkEvacuation(delta);
     this.updateFog();
     this.updateStatusUI();
@@ -714,10 +1015,101 @@ export class StoneGambleScene extends Phaser.Scene {
     return this.collidesWithObstacle(x, y, radius);
   }
 
+  private monsterCanSeePlayer(monster: Monster, distToPlayer: number): boolean {
+    // 躲藏时怪物看不到玩家
+    if (this.isHidden) return false;
+
+    if (distToPlayer > monster.visionRange) return false;
+
+    if (monster.visionAngle > 0) {
+      const angleToPlayer = Math.atan2(
+        this.player.y - monster.sprite.y, this.player.x - monster.sprite.x
+      );
+      let facingAngle = Math.atan2(monster.direction.y, monster.direction.x);
+      if (monster.isChasing) facingAngle = angleToPlayer;
+
+      let diff = Math.abs(angleToPlayer - facingAngle);
+      while (diff > Math.PI) diff = Math.abs(diff - Math.PI * 2);
+      if (diff > monster.visionAngle) return false;
+    }
+
+    // 隔墙看不见
+    if (this.lineBlockedByObstacle(monster.sprite.x, monster.sprite.y, this.player.x, this.player.y)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private lineBlockedByObstacle(x1: number, y1: number, x2: number, y2: number): boolean {
+    const dist = Phaser.Math.Distance.Between(x1, y1, x2, y2);
+    const steps = Math.ceil(dist / 10);
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const px = x1 + (x2 - x1) * t;
+      const py = y1 + (y2 - y1) * t;
+      if (this.collidesWithObstacle(px, py, 0)) return true;
+    }
+    return false;
+  }
+
+  // ─── Hide system ────────────────────────────────────────────
+
+  private tryHide() {
+    if (this.isHidden) {
+      this.exitHide();
+      return;
+    }
+
+    // 查找最近的躲藏点
+    let nearest: HideSpot | null = null;
+    let minD = HIDE_SPOT_RANGE;
+    for (const hs of this.hideSpots) {
+      const cx = hs.x + hs.w / 2;
+      const cy = hs.y + hs.h / 2;
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, cx, cy);
+      if (d < minD) { minD = d; nearest = hs; }
+    }
+
+    if (nearest) {
+      this.enterHide(nearest);
+    }
+  }
+
+  private enterHide(spot: HideSpot) {
+    this.isHidden = true;
+    this.hiddenSpot = spot;
+    spot.occupied = true;
+    this.player.x = spot.x + spot.w / 2;
+    this.player.y = spot.y + spot.h / 2;
+    this.player.setFillStyle(0x226688);
+    this.player.setAlpha(0.5);
+    // 躲藏后立即清除所有怪物的追击状态
+    for (const m of this.monsters) {
+      m.isChasing = false;
+      m.giveUpTimer = 0;
+    }
+    this.showMessage('躲藏中！怪物无法发现你。\n再按 E 离开');
+    this.time.delayedCall(2500, () => this.hideMessage());
+  }
+
+  private exitHide() {
+    this.isHidden = false;
+    if (this.hiddenSpot) {
+      // 离开时从下方门出去
+      this.player.x = this.hiddenSpot.x + this.hiddenSpot.w / 2;
+      this.player.y = this.hiddenSpot.y + this.hiddenSpot.h + 20;
+      this.hiddenSpot.occupied = false;
+      this.hiddenSpot = null;
+    }
+    this.player.setFillStyle(0x00ff00);
+    this.player.setAlpha(1);
+  }
+
   private drawStaminaBar() {
     this.staminaBar.clear();
     const barX = 16;
-    const barY = 92;
+    const barY = 136;
     const barW = 150;
     const barH = 12;
 
@@ -733,12 +1125,166 @@ export class StoneGambleScene extends Phaser.Scene {
     this.staminaBar.strokeRect(barX, barY, barW, barH);
   }
 
-  // ─── Spray ───────────────────────────────────────────────────
+  // ─── Key & Switch interaction ────────────────────────────────
 
+  private toggleKey() {
+    if (this.hasKey) {
+      // 放下钥匙
+      this.hasKey = false;
+      this.keyOnGround = true;
+      this.keyGroundX = this.player.x;
+      this.keyGroundY = this.player.y;
+      this.keySprite.setPosition(this.keyGroundX, this.keyGroundY);
+      this.keySprite.setVisible(true);
+      this.showMessage('🔑 放下钥匙', 1500);
+    } else {
+      // 拾取钥匙
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.keyGroundX, this.keyGroundY);
+      if (dist < KEY_PICKUP_RANGE && this.keyOnGround) {
+        this.hasKey = true;
+        this.keyOnGround = false;
+        this.keySprite.setVisible(false);
+        this.showMessage('🔑 拾取钥匙！\n拿着钥匙时不能用水枪/锤子', 2500);
+      }
+    }
+  }
+
+  private updateKeyPosition() {
+    if (this.hasKey) {
+      // 钥匙跟随玩家
+      this.keySprite.setPosition(this.player.x, this.player.y - 20);
+      this.keySprite.setVisible(true);
+    }
+  }
+
+  private updateSwitchActivation(delta: number) {
+    if (!this.hasKey) {
+      // 没有钥匙，重置所有进度
+      this.isActivatingSwitch = false;
+      this.currentSwitch = null;
+      for (const sw of this.switches) {
+        if (!sw.activated && sw.activateProgress > 0) {
+          sw.activateProgress = Math.max(0, sw.activateProgress - delta / 500);
+        }
+      }
+      return;
+    }
+
+    // 查找最近的未激活电闸
+    let nearest: Switch | null = null;
+    let bestDist = SWITCH_INTERACT_RANGE;
+    for (const sw of this.switches) {
+      if (sw.activated) continue;
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, sw.x, sw.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        nearest = sw;
+      }
+    }
+
+    if (!nearest) {
+      this.isActivatingSwitch = false;
+      this.currentSwitch = null;
+      return;
+    }
+
+    // 按住 F 键拉闸
+    if (this.fKey.isDown) {
+      this.isActivatingSwitch = true;
+      this.currentSwitch = nearest;
+      nearest.activateProgress += delta / SWITCH_ACTIVATE_DURATION;
+
+      if (nearest.activateProgress >= 1) {
+        // 拉闸成功！
+        nearest.activated = true;
+        nearest.activateProgress = 0;
+        this.activatedCount++;
+        this.isActivatingSwitch = false;
+        this.currentSwitch = null;
+
+        // 视觉效果
+        nearest.sprite.setFillStyle(0x00ff00);
+        nearest.glowSprite.setFillStyle(0x00ff00, 0.5);
+        this.cam.flash(400, 0, 255, 0);
+        this.showMessage(`⚡ 电闸 ${this.activatedCount}/${SWITCH_COUNT} 已激活！`, 2500);
+
+        // 吸引怪物
+        this.alertMonstersInRange(nearest.x, nearest.y, SWITCH_ALERT_RANGE);
+
+        // 全部激活 → 撤离点开启
+        if (this.activatedCount >= SWITCH_COUNT) {
+          this.showMessage('⚡ 所有电闸已激活！\n撤离点已开启！', 4000);
+          this.exit.setAlpha(0.8);
+          this.tweens.add({
+            targets: this.exit,
+            alpha: { from: 0.5, to: 1.0 },
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.inOut',
+          });
+        }
+      }
+    } else {
+      // 松开 F 键，进度回退
+      if (nearest.activateProgress > 0) {
+        nearest.activateProgress = Math.max(0, nearest.activateProgress - delta / 500);
+      }
+      this.isActivatingSwitch = false;
+      this.currentSwitch = null;
+    }
+  }
+
+  private updateSwitchPrompts() {
+    for (const sw of this.switches) {
+      if (sw.activated) {
+        sw.promptText.setText('✓ 已激活');
+        continue;
+      }
+
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, sw.x, sw.y);
+      if (dist < SWITCH_INTERACT_RANGE + 20) {
+        if (this.hasKey) {
+          const pct = Math.floor(sw.activateProgress * 100);
+          sw.promptText.setText(`[按住F] 拉闸 ${pct}%`);
+        } else {
+          sw.promptText.setText('需要钥匙');
+        }
+      } else {
+        sw.promptText.setText('');
+      }
+    }
+  }
+
+  // ─── Stone interaction ──────────────────────────────────────
+
+  private findNearestStone(): Stone | null {
+    let nearest: Stone | null = null;
+    let bestDist = INTERACT_RANGE;
+
+    for (const stone of this.stones) {
+      if (stone.state === 3 || stone.state === 4 || stone.state === 5) continue;
+
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, stone.x, stone.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        nearest = stone;
+      }
+    }
+
+    return nearest;
+  }
+
+  // ── 水枪：清洗石头 + 喷晕怪物 ──
   private updateSpray(delta: number) {
     this.sprayGraphics.clear();
 
-    if (!this.isSpraying) return;
+    if (!this.isSpraying) {
+      // 不喷射时，清除清洗目标
+      this.currentTarget = null;
+      this.updateStonePrompts();
+      return;
+    }
 
     // 绘制喷射锥形
     this.sprayGraphics.fillStyle(0x4488ff, 0.3);
@@ -756,24 +1302,13 @@ export class StoneGambleScene extends Phaser.Scene {
     );
     this.sprayGraphics.closePath();
     this.sprayGraphics.fillPath();
-  }
 
-  // ─── Stones ──────────────────────────────────────────────────
-
-  private updateStones(delta: number) {
-    if (!this.isSpraying) {
-      this.sprayTimer = 0;
-      this.sprayTarget = null;
-      this.clueText.setText('');
-      return;
-    }
-
-    // 找到瞄准的石头
+    // ── 找到锥形内的石头 ──
     let targetStone: Stone | null = null;
     let bestDist = Infinity;
 
     for (const stone of this.stones) {
-      if (stone.fullyRevealed || stone.abandoned) continue;
+      if (stone.state !== 0) continue; // 只清洗未清洗的
 
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, stone.x, stone.y);
       if (dist > SPRAY_RANGE + stone.radius) continue;
@@ -789,114 +1324,209 @@ export class StoneGambleScene extends Phaser.Scene {
       }
     }
 
-    if (!targetStone) {
-      this.sprayTimer = 0;
-      this.sprayTarget = null;
-      this.clueText.setText('');
-      return;
-    }
-
-    // 如果换了目标石头，重置计时器
-    if (this.sprayTarget !== targetStone) {
-      this.sprayTarget = targetStone;
-      this.sprayTimer = 0;
-    }
-
-    // 累加喷射时间
-    this.sprayTimer += delta;
-
-    // 找到当前未清洗的面
-    let currentFace = -1;
-    for (let i = 0; i < 3; i++) {
-      if (!targetStone.faces[i].cleaned) {
-        currentFace = i;
-        break;
+    // ── 清洗进度 ──
+    if (targetStone) {
+      if (this.currentTarget !== targetStone) {
+        this.currentTarget = targetStone;
       }
-    }
-    if (currentFace === -1) return;
 
-    // 显示进度提示
-    const tier = STONE_TIERS.find(t => t.type === targetStone.stoneType)!;
-    const progress = Math.min(1, this.sprayTimer / this.SPRAY_FACE_DURATION);
-    const progressPct = Math.floor(progress * 100);
+      targetStone.cleanProgress += delta / CLEAN_DURATION;
+      targetStone.shellSprite.setAlpha(0.9 * (1 - targetStone.cleanProgress));
 
-    if (currentFace === 0) {
-      this.clueText.setText(`清洗第1面... ${progressPct}%`);
-    } else if (currentFace === 1) {
-      this.clueText.setText(`清洗第2面... ${progressPct}%`);
-    } else {
-      this.clueText.setText(`清洗第3面... ${progressPct}%`);
-    }
+      const pct = Math.floor(targetStone.cleanProgress * 100);
+      targetStone.promptText.setText(`清洗中... ${pct}%`);
 
-    // 面皮逐渐变透明（视觉反馈）
-    targetStone.faceSprites[currentFace].setAlpha(0.85 - progress * 0.55);
-
-    // 时间到了，完成这一面
-    if (this.sprayTimer >= this.SPRAY_FACE_DURATION) {
-      this.sprayTimer = 0;
-
-      targetStone.faces[currentFace].cleaned = true;
-      targetStone.faceSprites[currentFace].setAlpha(0.15);
-      targetStone.revealStage = currentFace + 1;
-
-      // 显示线索
-      if (currentFace === 0) {
-        this.clueText.setText(`线索1: ${tier.clue1}`);
-      } else if (currentFace === 1) {
-        this.clueText.setText(`线索2: ${tier.clue2}`);
-      } else {
-        // 完全揭晓
-        targetStone.fullyRevealed = true;
+      if (targetStone.cleanProgress >= 1) {
+        targetStone.state = 2;
+        targetStone.shellSprite.setAlpha(0.1);
         targetStone.innerSprite.setAlpha(1);
-        this.clueText.setText('');
+        this.currentTarget = null;
 
-        if (targetStone.cursed) {
-          this.showMessage('💀 诅咒石！怪物来了！', 2000);
-          this.spawnCursedMonster(targetStone.x, targetStone.y);
-        } else if (tier.isUtility) {
-          if (tier.type === 'medkit') {
-            this.health = Math.min(100, this.health + 30);
-            this.showMessage('💊 药石！恢复30生命', 2000);
-            this.updateHealthUI();
-          } else if (tier.type === 'shield') {
-            this.hasShield = true;
-            this.showMessage('🛡 盾石！获得护盾', 2000);
+        const tier = STONE_TIERS.find(t => t.type === targetStone.stoneType)!;
+        targetStone.promptText.setText(`${tier.clue}`);
+
+        // 清洗声吸引怪物
+        this.alertMonstersInRange(targetStone.x, targetStone.y, 180);
+      }
+    } else {
+      this.currentTarget = null;
+    }
+
+    // ── 水枪喷怪物：眩晕 ──
+    for (const monster of this.monsters) {
+      if (monster.stunTimer > 0) continue;
+
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, monster.sprite.x, monster.sprite.y);
+      if (dist > SPRAY_RANGE) continue;
+
+      const angleToMonster = Math.atan2(monster.sprite.y - this.player.y, monster.sprite.x - this.player.x);
+      let angleDiff = Math.abs(angleToMonster - this.aimAngle);
+      if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+      if (angleDiff > SPRAY_ANGLE) continue;
+
+      // 喷中了！眩晕
+      monster.stunTimer = MONSTER_STUN_DURATION;
+      monster.isChasing = true; // 眩晕后会追击
+      monster.giveUpTimer = monster.giveUpDuration;
+    }
+
+    this.updateStonePrompts();
+  }
+
+  // ── 更新石头浮动提示 ──
+  private updateStonePrompts() {
+    const nearest = this.findNearestStone();
+    for (const stone of this.stones) {
+      if (stone === nearest) {
+        if (stone.state === 0 && !this.isSpraying) {
+          stone.promptText.setText('[左键] 水枪清洗');
+        } else if (stone.state === 2) {
+          const tier = STONE_TIERS.find(t => t.type === stone.stoneType)!;
+          if (!tier.isUtility) {
+            const safeVal = Math.floor(stone.stoneValue * 0.5);
+            stone.promptText.setText(`${tier.clue}\n[左键]稳拿${safeVal} | [右键]锤！`);
+          } else {
+            stone.promptText.setText(`${tier.clue}\n[左键]拿走 | [右键]锤！`);
           }
-        } else {
-          this.score += targetStone.stoneValue;
-          this.showMessage(`💎 ${tier.name}！价值 +${targetStone.stoneValue}`, 2000);
-          this.updateScoreUI();
+        }
+      } else {
+        if (stone.state === 0 && !this.isSpraying) {
+          stone.promptText.setText('');
         }
       }
     }
   }
 
-  private tryAbandonStone() {
-    // 找到正在清洗但未完成的石头
-    for (const stone of this.stones) {
-      if (stone.fullyRevealed || stone.abandoned) continue;
-      if (stone.revealStage === 0) continue;
+  // ── 稳拿底价 ──
+  private takeStone(stone: Stone) {
+    const tier = STONE_TIERS.find(t => t.type === stone.stoneType)!;
+    stone.state = 3;
 
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, stone.x, stone.y);
-      if (dist > SPRAY_RANGE + stone.radius + 50) continue;
-
-      // 放弃这块石头
-      stone.abandoned = true;
-      this.showMessage('✋ 止损！放弃这块石头', 1500);
-
-      // 如果已经洗了面，给一点安慰奖
-      if (stone.revealStage > 0 && !stone.cursed) {
-        const tier = STONE_TIERS.find(t => t.type === stone.stoneType)!;
-        if (!tier.isUtility) {
-          const partialValue = Math.floor(stone.stoneValue * 0.3 * (stone.revealStage / 3));
-          if (partialValue > 0) {
-            this.score += partialValue;
-            this.showMessage(`✋ 止损！获得 ${partialValue} 安慰奖`, 1500);
-            this.updateScoreUI();
-          }
-        }
+    if (tier.isUtility) {
+      if (tier.type === 'medkit') {
+        this.health = Math.min(100, this.health + 30);
+        this.showMessage('💊 药石！恢复30生命', 2000);
+        this.updateHealthUI();
+      } else if (tier.type === 'shield') {
+        this.hasShield = true;
+        this.showMessage('🛡 盾石！获得护盾', 2000);
       }
-      break;
+    } else {
+      const safeVal = Math.floor(stone.stoneValue * 0.5);
+      this.score += safeVal;
+      this.showMessage(`💰 稳拿！${tier.name} +${safeVal}金`, 2000);
+      this.updateScoreUI();
+    }
+
+    stone.promptText.setText('');
+    stone.shellSprite.setVisible(false);
+    // 浮动结果标记
+    this.spawnResultTag(stone, `💰+${Math.floor(stone.stoneValue * 0.5)}`);
+  }
+
+  // ── 锤子！赌一把 ──
+  private hammerStone(stone: Stone) {
+    stone.state = 4;
+    this.isHammering = true;
+    this.hammerTarget = stone;
+    stone.promptText.setText('🔨 锤！');
+
+    // 锤击动画：震动
+    this.cam.shake(200, 0.008);
+
+    // 立即揭晓
+    this.revealHammerResult(stone);
+  }
+
+  private revealHammerResult(stone: Stone) {
+    this.isHammering = false;
+    this.hammerTarget = null;
+    const tier = STONE_TIERS.find(t => t.type === stone.stoneType)!;
+
+    if (stone.cursed) {
+      // ── 诅咒石！炸裂 ──
+      this.cam.flash(300, 255, 0, 0);
+      this.cam.shake(500, 0.015);
+      this.showMessage('💀 诅咒石！！炸裂了！！', 2500);
+      this.spawnCursedMonster(stone.x, stone.y);
+      this.spawnCursedMonster(stone.x + 30, stone.y - 20);
+      this.alertMonstersInRange(stone.x, stone.y, 500);
+    } else if (tier.isUtility) {
+      // ── 功能石锤了也是功能效果 ──
+      if (tier.type === 'medkit') {
+        this.health = Math.min(100, this.health + 30);
+        this.showMessage('💊 药石！恢复30生命', 2000);
+        this.updateHealthUI();
+      } else if (tier.type === 'shield') {
+        this.hasShield = true;
+        this.showMessage('🛡 盾石！获得护盾', 2000);
+      }
+    } else {
+      // ── 正常石头：55%溢价 / 45%贬值 ──
+      const roll = Math.random();
+      if (roll < 0.55) {
+        // 溢价 1.5~3.0倍
+        const mult = Phaser.Math.FloatBetween(1.5, 3.0);
+        const finalVal = Math.floor(stone.stoneValue * mult);
+        this.score += finalVal;
+        this.cam.flash(300, 255, 215, 0);
+        this.showMessage(`💎 溢价！${tier.name} ×${mult.toFixed(1)} = +${finalVal}金！！`, 2500);
+        this.updateScoreUI();
+      } else {
+        // 贬值 0.3~0.6倍（保底1金）
+        const mult = Phaser.Math.FloatBetween(0.3, 0.6);
+        const finalVal = Math.max(1, Math.floor(stone.stoneValue * mult));
+        this.score += finalVal;
+        this.showMessage(`📉 贬值…${tier.name} ×${mult.toFixed(1)} = +${finalVal}金`, 2500);
+        this.updateScoreUI();
+      }
+    }
+
+    stone.promptText.setText('');
+    stone.shellSprite.setVisible(false);
+    stone.innerSprite.setAlpha(1);
+
+    // 浮动结果标记
+    if (stone.cursed) {
+      this.spawnResultTag(stone, '💀诅咒!');
+    } else if (tier.isUtility) {
+      this.spawnResultTag(stone, tier.type === 'medkit' ? '💊+30HP' : '🛡护盾');
+    } else {
+      // 从 showMessage 的文本中提取结果
+      const msgText = this.messageText.text;
+      const match = msgText.match(/\+(\d+)金/);
+      if (match) {
+        this.spawnResultTag(stone, `+${match[1]}金`);
+      }
+    }
+  }
+
+  // ── 浮动结果标记（从石头位置飘上去消失）──
+  private spawnResultTag(stone: Stone, text: string) {
+    const tag = this.add.text(stone.x, stone.y - stone.radius - 20, text, {
+      fontSize: '16px', color: '#ffff00',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(8);
+
+    this.tweens.add({
+      targets: tag,
+      y: tag.y - 40,
+      alpha: 0,
+      duration: 1500,
+      ease: 'Power2',
+      onComplete: () => tag.destroy(),
+    });
+  }
+
+  // ─── Monster helpers ─────────────────────────────────────────
+
+  private alertMonstersInRange(x: number, y: number, range: number) {
+    for (const monster of this.monsters) {
+      const dist = Phaser.Math.Distance.Between(x, y, monster.sprite.x, monster.sprite.y);
+      if (dist < range) {
+        monster.isChasing = true;
+        monster.giveUpTimer = monster.giveUpDuration;
+      }
     }
   }
 
@@ -942,8 +1572,9 @@ export class StoneGambleScene extends Phaser.Scene {
 
       const distToPlayer = Phaser.Math.Distance.Between(monster.sprite.x, monster.sprite.y, this.player.x, this.player.y);
 
-      // 检测玩家
-      if (distToPlayer < monster.visionRange) {
+      // 检测玩家（锥形视野 + 视线遮挡）
+      const canSee = this.monsterCanSeePlayer(monster, distToPlayer);
+      if (canSee) {
         monster.isChasing = true;
         monster.giveUpTimer = monster.giveUpDuration;
       } else if (monster.isChasing) {
@@ -992,6 +1623,7 @@ export class StoneGambleScene extends Phaser.Scene {
 
   private checkMonsterCollision() {
     if (this.damageCooldown > 0) return;
+    if (this.isHidden) return; // 躲藏时不会受到伤害
 
     for (const monster of this.monsters) {
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, monster.sprite.x, monster.sprite.y);
@@ -1020,7 +1652,8 @@ export class StoneGambleScene extends Phaser.Scene {
   // ─── Evacuation ──────────────────────────────────────────────
 
   private checkEvacuation(delta: number) {
-    if (this.score < this.goalScore) {
+    // 必须满足：分数达标 + 3个电闸全部激活
+    if (this.score < this.goalScore || this.activatedCount < SWITCH_COUNT) {
       this.isEvacuating = false;
       this.evacTimer = 0;
       this.evacText.setText('');
