@@ -890,18 +890,6 @@ export class EscortScene extends Phaser.Scene {
     }
   }
 
-  private lineBlockedByObstacle(x1: number, y1: number, x2: number, y2: number): boolean {
-    const dist = Phaser.Math.Distance.Between(x1, y1, x2, y2);
-    const steps = Math.ceil(dist / 10);
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      const px = x1 + (x2 - x1) * t;
-      const py = y1 + (y2 - y1) * t;
-      if (this.isObstacleAt(px, py, 0)) return true;
-    }
-    return false;
-  }
-
   // ─── Monster AI (BlindBoxHorror 风格) ────────────────────────
 
   private updateMonsters(delta: number) {

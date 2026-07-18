@@ -100,14 +100,14 @@ const STAMINA_REGEN_RATE = 20;
 const STAMINA_SPRINT_MIN = 5;
 
 const CLEAN_DURATION = 1500;   // 清洗1.5秒
-const HAMMER_REVEAL_DELAY = 1500; // 锤下后1.5秒揭晓
+// const HAMMER_REVEAL_DELAY = 1500; // 锤下后1.5秒揭晓 (unused)
 const INTERACT_RANGE = 60;    // 交互距离（拿走/锤）
 const SPRAY_RANGE = 160;     // 水枪射程
 const SPRAY_ANGLE = Math.PI / 12; // 水枪半锥角(15°)
 const MONSTER_STUN_DURATION = 2000; // 水枪喷怪物眩晕2秒
 
 // ─── Constants: hide & aggro ────────────────────────────────
-const HIDE_LOSE_AGGRO_TIME = 3000; // 躲藏后3秒才脱仇恨
+// const HIDE_LOSE_AGGRO_TIME = 3000; // 躲藏后3秒才脱仇恨 (unused)
 const HIDE_SPOT_RANGE = 40;       // 进入躲藏点的判定距离
 
 // ─── Constants: switches & key ──────────────────────────────
@@ -154,7 +154,6 @@ export class StoneGambleScene extends Phaser.Scene {
   private currentTarget: Stone | null = null;  // 当前水枪瞄准的石头
   private isSpraying = false;                    // 正在喷射水枪
   private isHammering = false;                   // 锤子动画中
-  private hammerTarget: Stone | null = null;
   private aimAngle = 0;                           // 水枪瞄准角度
   private sprayGraphics!: Phaser.GameObjects.Graphics;
 
@@ -184,8 +183,6 @@ export class StoneGambleScene extends Phaser.Scene {
   private keyOnGround = true;
   private gKey!: Phaser.Input.Keyboard.Key;
   private fKey!: Phaser.Input.Keyboard.Key;
-  private isActivatingSwitch = false;
-  private currentSwitch: Switch | null = null;
   private activatedCount = 0;
   private switchUIText!: Phaser.GameObjects.Text;
   private keyUIText!: Phaser.GameObjects.Text;
@@ -205,7 +202,6 @@ export class StoneGambleScene extends Phaser.Scene {
   private statusText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private evacText!: Phaser.GameObjects.Text;
-  private promptText!: Phaser.GameObjects.Text;   // 屏幕中央操作提示
   private hidePromptText!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -224,7 +220,6 @@ export class StoneGambleScene extends Phaser.Scene {
     this.evacTimer = 0;
     this.isSpraying = false;
     this.isHammering = false;
-    this.hammerTarget = null;
     this.currentTarget = null;
     this.aimAngle = 0;
     this.stones = [];
@@ -234,8 +229,6 @@ export class StoneGambleScene extends Phaser.Scene {
     this.switches = [];
     this.hasKey = false;
     this.keyOnGround = true;
-    this.isActivatingSwitch = false;
-    this.currentSwitch = null;
     this.activatedCount = 0;
     this.stamina = STAMINA_MAX;
     this.isSprinting = false;
@@ -730,7 +723,7 @@ export class StoneGambleScene extends Phaser.Scene {
       fontSize: '32px', color: '#00ff00', align: 'center',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
 
-    this.promptText = this.add.text(400, 540, '', {
+    this.add.text(400, 540, '', {
       fontSize: '16px', color: '#ffffff', align: 'center',
       backgroundColor: '#000000aa',
       padding: { x: 12, y: 6 },
@@ -1160,8 +1153,6 @@ export class StoneGambleScene extends Phaser.Scene {
   private updateSwitchActivation(delta: number) {
     if (!this.hasKey) {
       // 没有钥匙，重置所有进度
-      this.isActivatingSwitch = false;
-      this.currentSwitch = null;
       for (const sw of this.switches) {
         if (!sw.activated && sw.activateProgress > 0) {
           sw.activateProgress = Math.max(0, sw.activateProgress - delta / 500);
@@ -1183,15 +1174,11 @@ export class StoneGambleScene extends Phaser.Scene {
     }
 
     if (!nearest) {
-      this.isActivatingSwitch = false;
-      this.currentSwitch = null;
       return;
     }
 
     // 按住 F 键拉闸
     if (this.fKey.isDown) {
-      this.isActivatingSwitch = true;
-      this.currentSwitch = nearest;
       nearest.activateProgress += delta / SWITCH_ACTIVATE_DURATION;
 
       if (nearest.activateProgress >= 1) {
@@ -1199,8 +1186,6 @@ export class StoneGambleScene extends Phaser.Scene {
         nearest.activated = true;
         nearest.activateProgress = 0;
         this.activatedCount++;
-        this.isActivatingSwitch = false;
-        this.currentSwitch = null;
 
         // 视觉效果
         nearest.sprite.setFillStyle(0x00ff00);
@@ -1230,8 +1215,6 @@ export class StoneGambleScene extends Phaser.Scene {
       if (nearest.activateProgress > 0) {
         nearest.activateProgress = Math.max(0, nearest.activateProgress - delta / 500);
       }
-      this.isActivatingSwitch = false;
-      this.currentSwitch = null;
     }
   }
 
@@ -1428,7 +1411,6 @@ export class StoneGambleScene extends Phaser.Scene {
   private hammerStone(stone: Stone) {
     stone.state = 4;
     this.isHammering = true;
-    this.hammerTarget = stone;
     stone.promptText.setText('🔨 锤！');
 
     // 锤击动画：震动
@@ -1440,7 +1422,6 @@ export class StoneGambleScene extends Phaser.Scene {
 
   private revealHammerResult(stone: Stone) {
     this.isHammering = false;
-    this.hammerTarget = null;
     const tier = STONE_TIERS.find(t => t.type === stone.stoneType)!;
 
     if (stone.cursed) {

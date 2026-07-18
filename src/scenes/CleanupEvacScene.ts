@@ -1040,7 +1040,7 @@ export class CleanupEvacScene extends Phaser.Scene {
       const bg = this.add.rectangle(sx, sy, 38, 38, 0x222222, 0.85)
         .setScrollFactor(0).setDepth(29);
       bg.setStrokeStyle(2, 0x666666);
-      const numLabel = this.add.text(sx - 14, sy - 12, String(i + 1), {
+      this.add.text(sx - 14, sy - 12, String(i + 1), {
         fontSize: '10px', color: '#888888',
       }).setScrollFactor(0).setDepth(30);
       const txt = this.add.text(sx, sy + 2, '', {
@@ -1354,7 +1354,7 @@ export class CleanupEvacScene extends Phaser.Scene {
 
   // ─── Water gun spray ─────────────────────────────────────────
 
-  private updateSpray(delta: number) {
+  private updateSpray(_delta: number) {
     const g = this.sprayGraphics;
     g.clear();
 
