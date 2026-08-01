@@ -40,6 +40,7 @@ interface Monster {
   lastSeenY: number;
   hasLastSeen: boolean; // 是否有最后已知位置
   searchingTimer: number; // 到达最后已知位置后的搜索时间
+  monsterType: 'normal' | 'elite'; // 怪物类型：普通或精英
 }
 
 interface Stain {
@@ -542,51 +543,96 @@ export class CleanupEvacScene extends Phaser.Scene {
   // ─── Monsters ───────────────────────────────────────────────
 
   private createMonsters() {
-    const monsterCount = Phaser.Math.Between(4, 6);
-    let placed = 0;
+    // 初始不生成怪物，怪物通过开宝物触发
+    this.monsters = [];
+  }
+
+  // 根据宝物价值在玩家周围生成怪物
+  private spawnMonsterFromLoot(stoneValue: number) {
+    // 价值越高，生成怪物的概率越大
+    // 废料(5-15): 10% | 普通(20-50): 25% | 好玉(80-150): 45% | 极品(200-500): 70% | 帝王绿(800-1200): 95%
+    let spawnChance = 0.1;
+    if (stoneValue >= 800) spawnChance = 0.95;
+    else if (stoneValue >= 200) spawnChance = 0.70;
+    else if (stoneValue >= 80) spawnChance = 0.45;
+    else if (stoneValue >= 20) spawnChance = 0.25;
+    
+    if (Math.random() > spawnChance) {
+      return; // 没有触发怪物生成
+    }
+
+    // 在玩家周围 300-500 像素范围内生成
+    const minDist = 300;
+    const maxDist = 500;
+    let spawnX = 0, spawnY = 0;
     let attempts = 0;
-
-    while (placed < monsterCount && attempts < 500) {
-      const x = Phaser.Math.Between(200, this.mapWidth - 200);
-      const y = Phaser.Math.Between(200, this.mapHeight - 200);
-
-      if (Phaser.Math.Distance.Between(x, y, 80, 80) < 400) {
-        attempts++;
-        continue;
-      }
-
-      if (!this.isInsideObstacle(x, y, 14)) {
-        const isHunter = placed < 2;
-        const sprite = this.add.rectangle(x, y, 24, 24, isHunter ? 0xff00ff : 0xff8800);
-        sprite.setDepth(5);
-
-        this.monsters.push({
-          sprite,
-          speed: isHunter ? 40 : 30,
-          chaseSpeed: isHunter ? 185 : 170,
-          direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
-          patrolTimer: Phaser.Math.Between(0, 3000),
-          isChasing: false,
-          visionRange: isHunter ? 220 : 160,
-          visionAngle: Math.PI / 3,
-          territoryRadius: 9999, // 取消领地限制，追到底
-          homeX: x,
-          homeY: y,
-          giveUpTimer: 0,
-          giveUpDuration: isHunter ? 10000 : 8000,
-          isHunter,
-          stunTimer: 0,
-          attackCooldown: 0,
-          returnHomeTimer: 0,
-          lastSeenX: 0,
-          lastSeenY: 0,
-          hasLastSeen: false,
-          searchingTimer: 0,
-        });
-        placed++;
+    
+    while (attempts < 50) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = minDist + Math.random() * (maxDist - minDist);
+      spawnX = this.player.x + Math.cos(angle) * distance;
+      spawnY = this.player.y + Math.sin(angle) * distance;
+      
+      // 确保在地图范围内且不在障碍物内
+      if (spawnX > 50 && spawnX < this.mapWidth - 50 &&
+          spawnY > 50 && spawnY < this.mapHeight - 50 &&
+          !this.isInsideObstacle(spawnX, spawnY, 20)) {
+        break;
       }
       attempts++;
     }
+    
+    if (attempts >= 50) return; // 找不到合适位置
+
+    // 根据价值决定怪物类型
+    // 价值越高，精英怪概率越大
+    // 废料-普通: 0%精英 | 好玉: 15%精英 | 极品: 40%精英 | 帝王绿: 80%精英
+    let eliteChance = 0;
+    if (stoneValue >= 800) eliteChance = 0.80;
+    else if (stoneValue >= 200) eliteChance = 0.40;
+    else if (stoneValue >= 80) eliteChance = 0.15;
+    
+    const isElite = Math.random() < eliteChance;
+    const monsterType: 'normal' | 'elite' = isElite ? 'elite' : 'normal';
+    
+    // 精英怪：速度和伤害都是普通怪的2倍
+    const sprite = this.add.rectangle(spawnX, spawnY, 28, 28, isElite ? 0xff00ff : 0xff8800);
+    sprite.setDepth(5);
+    
+    // 精英怪加个发光边框
+    if (isElite) {
+      sprite.setStrokeStyle(3, 0xff00ff);
+    }
+
+    this.monsters.push({
+      sprite,
+      speed: isElite ? 50 : 40,        // 精英怪巡逻速度1.25倍
+      chaseSpeed: isElite ? 231 : 185,  // 精英怪追击速度1.25倍
+      direction: new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize(),
+      patrolTimer: Phaser.Math.Between(0, 3000),
+      isChasing: false,
+      visionRange: isElite ? 275 : 220,  // 精英怪视野1.25倍
+      visionAngle: Math.PI / 3,
+      territoryRadius: 9999,
+      homeX: spawnX,
+      homeY: spawnY,
+      giveUpTimer: 0,
+      giveUpDuration: 10000,
+      isHunter: true, // 所有生成的怪物都是猎手型
+      stunTimer: 0,
+      attackCooldown: 0,
+      returnHomeTimer: 0,
+      lastSeenX: 0,
+      lastSeenY: 0,
+      hasLastSeen: false,
+      searchingTimer: 0,
+      monsterType,
+    });
+
+    // 显示警告
+    const warningText = isElite ? '⚠️ 精英怪物出现！' : '⚠️ 怪物出现！';
+    const warningColor = isElite ? '#ff00ff' : '#ff8800';
+    this.showClue(spawnX, spawnY, warningText, warningColor);
   }
 
   // ─── Exit (撤离点) ──────────────────────────────────────────
@@ -1142,6 +1188,12 @@ export class CleanupEvacScene extends Phaser.Scene {
       this.triggerNegativeEffect(stain.x, stain.y);
     }
 
+    // ── 幸运会带来代价：开出宝物的同时独立roll怪物 ──
+    // 只有非功能石（有价值石）才会触发怪物生成
+    if (!tier.isUtility && stain.stoneValue > 0) {
+      this.spawnMonsterFromLoot(stain.stoneValue);
+    }
+
     // 揭晓飘字
     if (tier.isUtility) {
       this.showClue(stain.x, stain.y, `揭晓：${tier.name}！`, '#ff4444');
@@ -1564,20 +1616,24 @@ export class CleanupEvacScene extends Phaser.Scene {
           monster.sprite.x += (kx / klen) * 40;
           monster.sprite.y += (ky / klen) * 40;
         } else {
-          this.health -= 15;
+          // 精英怪造成1.25倍伤害
+          const damage = monster.monsterType === 'elite' ? 19 : 15;
+          this.health -= damage;
           this.healthText.setText(`生命: ${this.health}`);
           this.damageCooldown = 800;
           monster.attackCooldown = 800; // 攻击停顿
 
-          // 击退
+          // 精英怪击退更远（1.25倍）
+          const knockback = monster.monsterType === 'elite' ? 25 : 20;
           const kx = this.player.x - monster.sprite.x;
           const ky = this.player.y - monster.sprite.y;
           const klen = Math.sqrt(kx * kx + ky * ky) || 1;
-          this.player.x += (kx / klen) * 20;
-          this.player.y += (ky / klen) * 20;
+          this.player.x += (kx / klen) * knockback;
+          this.player.y += (ky / klen) * knockback;
 
-          // 闪烁
-          this.player.setFillStyle(0xff0000);
+          // 闪烁（精英怪伤害闪紫色）
+          const flashColor = monster.monsterType === 'elite' ? 0xff00ff : 0xff0000;
+          this.player.setFillStyle(flashColor);
           this.time.delayedCall(200, () => {
             if (!this.isDead) this.player.setFillStyle(0x00ff00);
           });
