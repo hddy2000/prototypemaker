@@ -101,12 +101,27 @@ export class MenuScene extends Phaser.Scene {
     {
       key: 'BlindBoxHorrorScene',
       name: '盲盒惊魂',
-      description: '携带盲盒探索三层鬼屋，找到破解台开盒：可能获得财宝、召唤怪物或BOSS！收集财宝逃离！',
+      description: '选择盲盒大小（小/中/大=1/2/3次破解），每次破解探索一层鬼屋！破解台开盲盒：财宝、怪物、BOSS或特殊事件！完成每层撤离任务（收集、解谜、限时、激活、封印）才能上楼！财宝分普通/稀有/史诗/传说4档品质，楼层越高奖励越好但风险越大！',
     },
     {
       key: 'CleanupMultiplayerScene',
       name: '多人清扫撤离',
       description: '多人合作版！一起用水枪清扫污渍收集宝物，团队价值达1000后到撤离点撤离！被怪物打倒后倒地，队友靠近按E复活！Shift疾跑 | E躲藏/复活/撤离 | 左键喷射',
+    },
+    {
+      key: 'BlindBoxMultiplayerScene',
+      name: '多人盲盒惊魂',
+      description: '【多人联机】合作PvE版盲盒惊魂！投票选盲盒大小，团队共享破解次数和财宝分数。5层鬼屋探索，每层完成撤离任务才能上楼。被鬼打倒倒地15秒，队友靠近按E复活！E交互/复活 | F上楼 | 1/2/3投票',
+    },
+    {
+      key: 'AltarCleanupScene',
+      name: '祭坛清扫',
+      description: '中央祭坛+周围6个房间格子间！用水枪清洗各房间污渍→拾取宝物→运回祭坛献祭→价值达1000通关！猎手巡逻追击+陷阱怪贴墙突袭！诅咒石触发负面效果！Shift疾跑 | 左键喷射 | 右键止损 | E躲藏/献祭 | 1/2/3装备',
+    },
+    {
+      key: 'StoneGambleScene',
+      name: '赌石撤离(精简版)',
+      description: '找到原石，用水枪逐面清洗石皮→逐步揭晓内部价值！废料5~15还是帝王绿800~1200？15%诅咒石完全揭晓会召唤怪物！右键止损放弃，收集价值1000后撤离！Shift疾跑 | 左键喷射 | 右键止损',
     },
     // Add new prototypes here
   ];
@@ -127,6 +142,9 @@ export class MenuScene extends Phaser.Scene {
     // Clear stale references from previous scene instance (scene.restart/start reuses the same object)
     this.gridCells = [];
     this.selectedIndex = 0;
+
+    // 回菜单时清除 hash
+    if (location.hash) location.hash = '';
 
     // Title
     this.add.text(400, 40, 'Prototype Maker', {
@@ -197,7 +215,7 @@ export class MenuScene extends Phaser.Scene {
         } else if (proto.key === 'GreedCurseScene') {
           this.showGreedCurseIntro();
         } else {
-          this.scene.start(proto.key);
+          this.launchScene(proto.key);
         }
       };
 
@@ -227,7 +245,7 @@ export class MenuScene extends Phaser.Scene {
       } else if (proto.key === 'GreedCurseScene') {
         this.showGreedCurseIntro();
       } else {
-        this.scene.start(proto.key);
+        this.launchScene(proto.key);
       }
     });
 
@@ -279,6 +297,12 @@ export class MenuScene extends Phaser.Scene {
         bg.setStrokeStyle(1, 0x333355, 0.6);
       }
     });
+  }
+
+  /** 启动场景并更新 URL hash */
+  private launchScene(key: string) {
+    location.hash = key;
+    this.scene.start(key);
   }
 
   /** 末班地铁说明页：按Enter进入游戏 */
@@ -335,7 +359,7 @@ export class MenuScene extends Phaser.Scene {
       panel.destroy();
       texts.forEach(t => t.destroy());
       enterListener.removeListener('down', handler);
-      this.scene.start('CleanupScene');
+      this.launchScene('CleanupScene');
     };
     enterListener.on('down', handler);
   }
@@ -391,7 +415,7 @@ export class MenuScene extends Phaser.Scene {
       panel.destroy();
       texts.forEach(t => t.destroy());
       enterListener.removeListener('down', handler);
-      this.scene.start('EcholocationScene');
+      this.launchScene('EcholocationScene');
     };
     enterListener.on('down', handler);
   }
@@ -450,7 +474,7 @@ export class MenuScene extends Phaser.Scene {
       panel.destroy();
       texts.forEach(t => t.destroy());
       enterListener.removeListener('down', handler);
-      this.scene.start('GreedCurseScene');
+      this.launchScene('GreedCurseScene');
     };
     enterListener.on('down', handler);
   }

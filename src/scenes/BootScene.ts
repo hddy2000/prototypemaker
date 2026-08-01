@@ -17,6 +17,15 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    // URL hash 直跳：#XxxScene → 直接进入对应场景，跳过菜单
+    const hashKey = location.hash.replace(/^#\/?/, '');
+    if (hashKey && hashKey !== 'BootScene' && hashKey !== 'MenuScene') {
+      try {
+        this.scene.get(hashKey); // throws if not registered
+        this.scene.start(hashKey);
+        return;
+      } catch { /* invalid key, fall through to menu */ }
+    }
     this.scene.start('MenuScene');
   }
 }
