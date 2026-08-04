@@ -36,7 +36,7 @@ const OBSTACLES: Array<{ x: number; y: number; w: number; h: number }> = [
 
 const PLAYER_RADIUS = 15;
 const INFECT_COOLDOWN_MS = 3000; // 3 seconds
-const PLAYER_SPEED = 220; // everyone same speed
+const PLAYER_SPEED = 200; // everyone same speed
 const GAME_DURATION_SECONDS = 120; // 2 minutes
 const MIN_PLAYERS_TO_START = 2; // For testing, set to 2. Production should be 4+
 
@@ -67,6 +67,12 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
         player.x = message.x;
         player.y = message.y;
         player.rotation = message.rotation ?? 0;
+      }
+    });
+
+    this.onMessage("restart", (client) => {
+      if (this.state.phase === "ended") {
+        this.resetGame();
       }
     });
 
@@ -133,12 +139,11 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
     this.gameTimer = setInterval(() => {
       if (this.state.phase === "active") {
         this.state.timeRemaining--;
-        
-        // Update survival scores every second
+
+        // Survival score: +1 per second alive
         this.state.players.forEach((player) => {
           if (!player.infected && player.alive) {
-            player.survivalSeconds++;
-            player.score += 1; // +1 per 10 seconds = +1 per second tick (simplified)
+            player.score += 1;
           }
         });
 
@@ -160,7 +165,7 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
     // Award last survivor bonus
     const survivors = Array.from(this.state.players.values()).filter(p => !p.infected && p.alive);
     survivors.forEach(p => {
-      p.score += 10; // last survivor bonus
+      p.score += 100; // last survivor bonus
     });
 
     // Broadcast final state with scores
@@ -174,6 +179,30 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
         score: p.score,
       })),
     });
+  }
+
+  private resetGame() {
+    console.log("[InfectionTagRoom] Resetting game");
+    this.state.phase = "waiting";
+
+    // Reset all players
+    this.spawnIndex = 0;
+    this.state.players.forEach((player) => {
+      player.infected = false;
+      player.isZeroPatient = false;
+      player.infectedAt = 0;
+      player.lastInfectTime = 0;
+      player.infectionCount = 0;
+      player.score = 0;
+      player.survivalSeconds = 0;
+      player.alive = true;
+      this.spawnPlayer(player);
+    });
+
+    // Auto-start if enough players
+    if (this.state.players.size >= MIN_PLAYERS_TO_START) {
+      this.startGame();
+    }
   }
 
   private update(deltaTime: number) {
@@ -206,12 +235,8 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
           player1.lastInfectTime = now;
           player1.infectionCount++;
 
-          // Score: +5 for zero patient, +1 for unknowing infected
-          if (player1.isZeroPatient) {
-            player1.score += 5;
-          } else {
-            player1.score += 1;
-          }
+          // Score: +50 for infecting someone
+          player1.score += 50;
 
           console.log(`[InfectionTagRoom] ${id1} infected ${id2}`);
 

@@ -1,4 +1,4 @@
-import { Schema, type } from "@colyseus/schema";
+import { Schema, MapSchema, type } from "@colyseus/schema";
 
 export class InfectionPlayer extends Schema {
   @type("number") x: number = 0;
@@ -17,7 +17,7 @@ export class InfectionPlayer extends Schema {
 
 export class InfectionTagState extends Schema {
   @type("string") phase: string = "waiting"; // waiting, active, ended
-  @type({ map: InfectionPlayer }) players = new Map<string, InfectionPlayer>();
+  @type({ map: InfectionPlayer }) players = new MapSchema<InfectionPlayer>();
   @type("number") timeRemaining: number = 120; // 2 minutes in seconds
   @type("number") startTime: number = 0;
 }

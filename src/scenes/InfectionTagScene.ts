@@ -6,9 +6,11 @@ interface PlayerSprite {
   body: Phaser.GameObjects.Rectangle;
   nameText: Phaser.GameObjects.Text;
   smokeParticles?: Phaser.GameObjects.Particles.ParticleEmitter;
+  glowCircle?: Phaser.GameObjects.Arc;
   targetX: number;
   targetY: number;
   targetRotation: number;
+  infected: boolean;
 }
 
 export class InfectionTagScene extends Phaser.Scene {
@@ -18,12 +20,13 @@ export class InfectionTagScene extends Phaser.Scene {
   private mySessionId = '';
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
-  private moveSpeed = 220;
+  private moveSpeed = 200;
   private obstacles: Phaser.GameObjects.Rectangle[] = [];
   private connectionStatus!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
   private phaseText!: Phaser.GameObjects.Text;
   private scoreText!: Phaser.GameObjects.Text;
+  private restartBtn!: Phaser.GameObjects.Text;
   private mouseX = 0;
   private mouseY = 0;
 
@@ -68,7 +71,7 @@ export class InfectionTagScene extends Phaser.Scene {
 
     // Camera setup
     this.cameras.main.setBounds(0, 0, 1600, 1200);
-    this.cameras.main.setZoom(0.8);
+    this.cameras.main.setZoom(1.0);
 
     // UI
     this.add.text(10, 52, '传染抓人', {
@@ -90,6 +93,19 @@ export class InfectionTagScene extends Phaser.Scene {
       fontSize: '16px',
       color: '#ffdd44',
     }).setScrollFactor(0).setDepth(30);
+
+    this.restartBtn = this.add.text(400, 400, '再来一局', {
+      fontSize: '24px',
+      color: '#ffffff',
+      backgroundColor: '#333333',
+      padding: { x: 20, y: 10 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setInteractive({ useHandCursor: true }).setVisible(false);
+
+    this.restartBtn.on('pointerdown', () => {
+      if (this.room) {
+        this.room.send('restart');
+      }
+    });
 
     this.phaseText = this.add.text(400, 300, '', {
       fontSize: '32px',
@@ -251,9 +267,14 @@ export class InfectionTagScene extends Phaser.Scene {
       this.room.state.listen('phase', (currentValue: string) => {
         if (currentValue === 'active') {
           this.phaseText.setText('游戏开始！');
+          this.restartBtn.setVisible(false);
           this.time.delayedCall(2000, () => this.phaseText.setText(''));
         } else if (currentValue === 'ended') {
           this.phaseText.setText('游戏结束！');
+          this.restartBtn.setVisible(true);
+        } else if (currentValue === 'waiting') {
+          this.phaseText.setText('等待玩家...');
+          this.restartBtn.setVisible(false);
         }
       });
 
@@ -320,6 +341,7 @@ export class InfectionTagScene extends Phaser.Scene {
       targetX: player.x,
       targetY: player.y,
       targetRotation: player.rotation,
+      infected: false,
     };
 
     this.playerSprites.set(sessionId, playerSprite);
@@ -344,6 +366,28 @@ export class InfectionTagScene extends Phaser.Scene {
     player.listen('infected', (value: boolean) => {
       const sprite = this.playerSprites.get(sessionId);
       if (sprite && value) {
+        sprite.infected = true;
+        
+        // Immediately turn body green
+        sprite.body.setFillStyle(0x00ff00);
+        
+        // Add green glow circle around player
+        const glow = this.add.circle(0, 0, 35, 0x00ff00, 0.3);
+        glow.setDepth(-1);
+        sprite.sprite.add(glow);
+        sprite.glowCircle = glow;
+
+        // Pulsing glow effect
+        this.tweens.add({
+          targets: glow,
+          alpha: { from: 0.3, to: 0.6 },
+          scale: { from: 1, to: 1.3 },
+          duration: 800,
+          yoyo: true,
+          repeat: -1,
+        });
+
+        // Add smoke after 45 seconds (more obvious)
         const infectedAt = player.infectedAt;
         const now = Date.now();
         const timeSinceInfection = now - infectedAt;
@@ -433,6 +477,14 @@ export class InfectionTagScene extends Phaser.Scene {
       const clampedX = Phaser.Math.Clamp(newX, 20, 1580);
       const clampedY = Phaser.Math.Clamp(newY, 20, 1180);
 
+      // Update local position immediately (no interpolation for local player)
+      mySprite.sprite.x = clampedX;
+      mySprite.sprite.y = clampedY;
+      mySprite.sprite.rotation = rotation;
+      mySprite.targetX = clampedX;
+      mySprite.targetY = clampedY;
+      mySprite.targetRotation = rotation;
+
       this.room.send('move', {
         x: clampedX,
         y: clampedY,
@@ -440,8 +492,9 @@ export class InfectionTagScene extends Phaser.Scene {
       });
     }
 
-    // Interpolate all player positions
-    this.playerSprites.forEach((sprite) => {
+    // Interpolate only remote players
+    this.playerSprites.forEach((sprite, sessionId) => {
+      if (sessionId === this.mySessionId) return; // skip local player
       sprite.sprite.x = Phaser.Math.Linear(sprite.sprite.x, sprite.targetX, 0.2);
       sprite.sprite.y = Phaser.Math.Linear(sprite.sprite.y, sprite.targetY, 0.2);
       sprite.sprite.rotation = Phaser.Math.Linear(sprite.sprite.rotation, sprite.targetRotation, 0.2);
