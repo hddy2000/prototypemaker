@@ -13,6 +13,7 @@ export class InfectionPlayer extends Schema {
   @type("boolean") isZeroPatient: boolean = false; // only zero patient has full map vision
   @type("number") score: number = 0;
   @type("number") survivalSeconds: number = 0; // how long survived (for scoring)
+  @type("boolean") ready: boolean = false; // ready to start
 }
 
 export class InfectionTagState extends Schema {

@@ -38,7 +38,7 @@ const PLAYER_RADIUS = 15;
 const INFECT_COOLDOWN_MS = 3000; // 3 seconds
 const PLAYER_SPEED = 200; // everyone same speed
 const GAME_DURATION_SECONDS = 120; // 2 minutes
-const MIN_PLAYERS_TO_START = 2; // For testing, set to 2. Production should be 4+
+const MIN_PLAYERS_TO_START = 2;
 
 const SPAWN_POINTS = [
   { x: 140, y: 140 },
@@ -76,12 +76,33 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
       }
     });
 
+    this.onMessage("ready", (client) => {
+      const player = this.state.players.get(client.sessionId);
+      if (player && this.state.phase === "waiting") {
+        player.ready = !player.ready;
+        console.log(`[InfectionTagRoom] ${client.sessionId} ready=${player.ready}`);
+
+        // Start game if all players are ready and enough players
+        const allReady = Array.from(this.state.players.values()).every(p => p.ready);
+        if (allReady && this.state.players.size >= MIN_PLAYERS_TO_START) {
+          this.startGame();
+        }
+      }
+    });
+
     this.setSimulationInterval((deltaTime) => {
       this.update(deltaTime);
     });
   }
 
   onJoin(client: Client, _options: unknown) {
+    // Don't allow joining mid-game
+    if (this.state.phase === "active") {
+      console.log(`[InfectionTagRoom] Rejecting join during active game: ${client.sessionId}`);
+      client.leave(1, "Game in progress, please wait for next round");
+      return;
+    }
+
     const player = new InfectionPlayer();
     const colorIndex = this.state.players.size % PLAYER_COLORS.length;
     player.color = PLAYER_COLORS[colorIndex];
@@ -90,15 +111,14 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
     player.infectedAt = 0;
     player.lastInfectTime = 0;
     player.infectionCount = 0;
+    player.isZeroPatient = false;
+    player.score = 0;
+    player.survivalSeconds = 0;
+    player.ready = false;
     this.spawnPlayer(player);
     this.state.players.set(client.sessionId, player);
 
     console.log(`[InfectionTagRoom] onJoin sessionId=${client.sessionId} color=${player.color}`);
-
-    // Auto-start if enough players
-    if (this.state.players.size >= MIN_PLAYERS_TO_START && this.state.phase === "waiting") {
-      this.startGame();
-    }
   }
 
   onLeave(client: Client, _consented: boolean) {
@@ -196,13 +216,9 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
       player.score = 0;
       player.survivalSeconds = 0;
       player.alive = true;
+      player.ready = false;
       this.spawnPlayer(player);
     });
-
-    // Auto-start if enough players
-    if (this.state.players.size >= MIN_PLAYERS_TO_START) {
-      this.startGame();
-    }
   }
 
   private update(deltaTime: number) {

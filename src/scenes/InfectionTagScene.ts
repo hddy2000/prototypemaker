@@ -27,6 +27,8 @@ export class InfectionTagScene extends Phaser.Scene {
   private phaseText!: Phaser.GameObjects.Text;
   private scoreText!: Phaser.GameObjects.Text;
   private restartBtn!: Phaser.GameObjects.Text;
+  private readyBtn!: Phaser.GameObjects.Text;
+  private readyCountText!: Phaser.GameObjects.Text;
   private mouseX = 0;
   private mouseY = 0;
 
@@ -106,6 +108,25 @@ export class InfectionTagScene extends Phaser.Scene {
         this.room.send('restart');
       }
     });
+
+    // Ready button (shown during waiting phase)
+    this.readyBtn = this.add.text(400, 400, '准备', {
+      fontSize: '24px',
+      color: '#ffffff',
+      backgroundColor: '#226622',
+      padding: { x: 30, y: 12 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setInteractive({ useHandCursor: true }).setVisible(false);
+
+    this.readyBtn.on('pointerdown', () => {
+      if (this.room) {
+        this.room.send('ready');
+      }
+    });
+
+    this.readyCountText = this.add.text(400, 350, '', {
+      fontSize: '18px',
+      color: '#aaaaaa',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(30);
 
     this.phaseText = this.add.text(400, 300, '', {
       fontSize: '32px',
@@ -268,13 +289,22 @@ export class InfectionTagScene extends Phaser.Scene {
         if (currentValue === 'active') {
           this.phaseText.setText('游戏开始！');
           this.restartBtn.setVisible(false);
+          this.readyBtn.setVisible(false);
+          this.readyCountText.setVisible(false);
           this.time.delayedCall(2000, () => this.phaseText.setText(''));
         } else if (currentValue === 'ended') {
           this.phaseText.setText('游戏结束！');
           this.restartBtn.setVisible(true);
+          this.readyBtn.setVisible(false);
+          this.readyCountText.setVisible(false);
         } else if (currentValue === 'waiting') {
-          this.phaseText.setText('等待玩家...');
+          this.phaseText.setText('等待玩家准备...');
           this.restartBtn.setVisible(false);
+          this.readyBtn.setVisible(true);
+          this.readyCountText.setVisible(true);
+          this.isZeroPatient = false;
+          this.resetAllPlayerSprites();
+          this.updateReadyUI();
         }
       });
 
@@ -314,8 +344,19 @@ export class InfectionTagScene extends Phaser.Scene {
       });
 
       this.room.onLeave((code) => {
-        this.connectionStatus.setText(`Disconnected (code: ${code})`);
-        this.connectionStatus.setColor('#ff0000');
+        if (code === 1) {
+          // Kicked: game in progress
+          this.connectionStatus.setText('游戏进行中，请等待下一局...');
+          this.connectionStatus.setColor('#ff8800');
+          this.phaseText.setText('游戏进行中\n请等待下一局');
+          // Auto-retry joining after 3 seconds
+          this.time.delayedCall(3000, () => {
+            this.connectToServer();
+          });
+        } else {
+          this.connectionStatus.setText(`Disconnected (code: ${code})`);
+          this.connectionStatus.setColor('#ff0000');
+        }
       });
     } catch (error) {
       console.error('[InfectionTagScene] connect:error', error);
@@ -416,6 +457,15 @@ export class InfectionTagScene extends Phaser.Scene {
         this.scoreText.setText(`Score: ${value}`);
       }
     });
+
+    player.listen('ready', (value: boolean) => {
+      this.updateReadyUI();
+      // Update button text if it's my ready state
+      if (sessionId === this.mySessionId) {
+        this.readyBtn.setText(value ? '取消准备' : '准备');
+        this.readyBtn.setBackgroundColor(value ? '#663333' : '#226622');
+      }
+    });
   }
 
   private addSmokeEffect(sessionId: string) {
@@ -442,6 +492,40 @@ export class InfectionTagScene extends Phaser.Scene {
       sprite.sprite.destroy();
       this.playerSprites.delete(sessionId);
     }
+  }
+
+  private updateReadyUI() {
+    if (!this.room) return;
+    let readyCount = 0;
+    let totalCount = 0;
+    this.room.state.players.forEach((player: any) => {
+      totalCount++;
+      if (player.ready) readyCount++;
+    });
+    this.readyCountText.setText(`${readyCount}/${totalCount} 已准备`);
+  }
+
+  private resetAllPlayerSprites() {
+    this.playerSprites.forEach((sprite, sessionId) => {
+      // Restore original color from server state
+      const player = this.room.state.players.get(sessionId);
+      if (player) {
+        sprite.body.setFillStyle(Phaser.Display.Color.HexStringToColor(player.color).color);
+      }
+      sprite.infected = false;
+
+      // Remove glow circle
+      if (sprite.glowCircle) {
+        sprite.glowCircle.destroy();
+        sprite.glowCircle = undefined;
+      }
+
+      // Remove smoke particles
+      if (sprite.smokeParticles) {
+        sprite.smokeParticles.destroy();
+        sprite.smokeParticles = undefined;
+      }
+    });
   }
 
   update(_time: number, delta: number) {
