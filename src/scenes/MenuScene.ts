@@ -123,6 +123,11 @@ export class MenuScene extends Phaser.Scene {
       name: '赌石撤离(精简版)',
       description: '找到原石，用水枪逐面清洗石皮→逐步揭晓内部价值！废料5~15还是帝王绿800~1200？15%诅咒石完全揭晓会召唤怪物！右键止损放弃，收集价值1000后撤离！Shift疾跑 | 左键喷射 | 右键止损',
     },
+    {
+      key: 'InfectionTagScene',
+      name: '传染抓人',
+      description: '【多人联机】黑暗地图，手电筒照明！零号病人有全图视野，其他人只有手电筒。碰到就传染，活过2分钟即胜利！WASD移动',
+    },
     // Add new prototypes here
   ];
 

@@ -17,6 +17,13 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    // Generate particle texture programmatically
+    const particleGraphics = this.add.graphics();
+    particleGraphics.fillStyle(0xffffff);
+    particleGraphics.fillCircle(4, 4, 4);
+    particleGraphics.generateTexture('particle', 8, 8);
+    particleGraphics.destroy();
+
     // URL hash 直跳：#XxxScene → 直接进入对应场景，跳过菜单
     const hashKey = location.hash.replace(/^#\/?/, '');
     if (hashKey && hashKey !== 'BootScene' && hashKey !== 'MenuScene') {
