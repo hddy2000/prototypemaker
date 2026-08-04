@@ -773,6 +773,7 @@ export class CleanupEvacScene extends Phaser.Scene {
   }
 
   /** 网格分布法放置怪物：将地图划分为 cols×rows 个格子，在每格内随机选一个合法位置放一只怪物 */
+  // @ts-ignore: kept for future use
   private placeMonstersInGrid(
     count: number, cols: number, rows: number,
     margin: number, spawnSafeDist: number,
@@ -829,6 +830,7 @@ export class CleanupEvacScene extends Phaser.Scene {
   }
 
   /** 创建单个怪物并加入数组 */
+  // @ts-ignore: kept for future use
   private spawnMonster(x: number, y: number, isHunter: boolean, isTrap: boolean) {
     const sprite = this.add.rectangle(x, y, 24, 24, isHunter ? 0xff00ff : 0xff8800);
     sprite.setDepth(5);
@@ -893,6 +895,7 @@ export class CleanupEvacScene extends Phaser.Scene {
   }
 
   /** 创建炮塔型怪物（青色，大范围巡逻，发现玩家后原地吐子弹远程攻击，不追击） */
+  // @ts-ignore: kept for future use
   private spawnTurretMonster(x: number, y: number) {
     const sprite = this.add.rectangle(x, y, 28, 28, TURRET_COLOR);
     sprite.setDepth(5);
@@ -946,6 +949,7 @@ export class CleanupEvacScene extends Phaser.Scene {
   }
 
   /** 创建抓捕型怪物（棕色，大体形，抓住玩家拖到随机地点扔下掉血，然后长CD） */
+  // @ts-ignore: kept for future use
   private spawnGrabblerMonster(x: number, y: number) {
     const sprite = this.add.rectangle(x, y, GRABBLER_SIZE, GRABBLER_SIZE, GRABBLER_COLOR);
     sprite.setDepth(5);
@@ -1921,6 +1925,7 @@ export class CleanupEvacScene extends Phaser.Scene {
             grabblerTargetX: 0,
             grabblerTargetY: 0,
             grabblerDragSpeed: 0,
+            monsterType: 'elite',
           });
           placed = true;
           this.playSpawnJumpscare();
