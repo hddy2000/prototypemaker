@@ -18,20 +18,18 @@ const ARENA = {
 };
 
 const OBSTACLES: Array<{ x: number; y: number; w: number; h: number }> = [
-  // Center cross
-  { x: 720, y: 400, w: 160, h: 40 },
-  { x: 780, y: 340, w: 40, h: 160 },
-  // Corner blocks
-  { x: 200, y: 200, w: 120, h: 120 },
-  { x: 1280, y: 200, w: 120, h: 120 },
-  { x: 200, y: 880, w: 120, h: 120 },
-  { x: 1280, y: 880, w: 120, h: 120 },
-  // Side walls
-  { x: 500, y: 560, w: 40, h: 200 },
-  { x: 1060, y: 440, w: 40, h: 200 },
-  // Extra cover
-  { x: 400, y: 700, w: 80, h: 40 },
-  { x: 1120, y: 460, w: 80, h: 40 },
+  { x: 760, y: 100, w: 80, h: 280 },
+  { x: 760, y: 820, w: 80, h: 280 },
+  { x: 220, y: 320, w: 380, h: 60 },
+  { x: 1000, y: 320, w: 380, h: 60 },
+  { x: 220, y: 820, w: 380, h: 60 },
+  { x: 1000, y: 820, w: 380, h: 60 },
+  { x: 320, y: 500, w: 60, h: 200 },
+  { x: 1220, y: 500, w: 60, h: 200 },
+  { x: 520, y: 560, w: 180, h: 60 },
+  { x: 900, y: 560, w: 180, h: 60 },
+  { x: 120, y: 120, w: 180, h: 60 },
+  { x: 1300, y: 1020, w: 180, h: 60 },
 ];
 
 const PLAYER_RADIUS = 15;
@@ -41,14 +39,14 @@ const GAME_DURATION_SECONDS = 120; // 2 minutes
 const MIN_PLAYERS_TO_START = 2;
 
 const SPAWN_POINTS = [
-  { x: 140, y: 140 },
-  { x: 1460, y: 140 },
-  { x: 140, y: 1060 },
-  { x: 1460, y: 1060 },
-  { x: 220, y: 600 },
-  { x: 1380, y: 600 },
-  { x: 800, y: 160 },
-  { x: 800, y: 1040 },
+  { x: 420, y: 150 },
+  { x: 1180, y: 150 },
+  { x: 160, y: 600 },
+  { x: 1440, y: 600 },
+  { x: 420, y: 1050 },
+  { x: 1180, y: 1050 },
+  { x: 700, y: 690 },
+  { x: 900, y: 510 },
 ];
 
 export class InfectionTagRoom extends Room<InfectionTagState> {
@@ -64,8 +62,9 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
     this.onMessage("move", (client, message) => {
       const player = this.state.players.get(client.sessionId);
       if (player && player.alive && typeof message.x === "number") {
-        player.x = message.x;
-        player.y = message.y;
+        const resolvedPosition = this.resolvePlayerPosition(player.x, player.y, message.x, message.y);
+        player.x = resolvedPosition.x;
+        player.y = resolvedPosition.y;
         player.rotation = message.rotation ?? 0;
       }
     });
@@ -277,5 +276,36 @@ export class InfectionTagRoom extends Room<InfectionTagState> {
     player.x = spawnPoint.x;
     player.y = spawnPoint.y;
     this.spawnIndex++;
+  }
+
+  private resolvePlayerPosition(currentX: number, currentY: number, targetX: number, targetY: number) {
+    const clampedX = Math.max(PLAYER_RADIUS, Math.min(ARENA.width - PLAYER_RADIUS, targetX));
+    const clampedY = Math.max(PLAYER_RADIUS, Math.min(ARENA.height - PLAYER_RADIUS, targetY));
+
+    let resolvedX = currentX;
+    let resolvedY = currentY;
+
+    if (!this.collidesWithObstacle(clampedX, resolvedY)) {
+      resolvedX = clampedX;
+    }
+
+    if (!this.collidesWithObstacle(resolvedX, clampedY)) {
+      resolvedY = clampedY;
+    }
+
+    return { x: resolvedX, y: resolvedY };
+  }
+
+  private collidesWithObstacle(x: number, y: number) {
+    const left = x - PLAYER_RADIUS;
+    const right = x + PLAYER_RADIUS;
+    const top = y - PLAYER_RADIUS;
+    const bottom = y + PLAYER_RADIUS;
+
+    return OBSTACLES.some((obstacle) => {
+      const obstacleRight = obstacle.x + obstacle.w;
+      const obstacleBottom = obstacle.y + obstacle.h;
+      return right > obstacle.x && left < obstacleRight && bottom > obstacle.y && top < obstacleBottom;
+    });
   }
 }

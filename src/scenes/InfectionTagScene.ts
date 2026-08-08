@@ -1,6 +1,38 @@
 import Phaser from 'phaser';
 import { Client, Room } from 'colyseus.js';
 
+type Obstacle = { x: number; y: number; w: number; h: number };
+
+const OBSTACLES: Obstacle[] = [
+  { x: 760, y: 100, w: 80, h: 280 },
+  { x: 760, y: 820, w: 80, h: 280 },
+  { x: 220, y: 320, w: 380, h: 60 },
+  { x: 1000, y: 320, w: 380, h: 60 },
+  { x: 220, y: 820, w: 380, h: 60 },
+  { x: 1000, y: 820, w: 380, h: 60 },
+  { x: 320, y: 500, w: 60, h: 200 },
+  { x: 1220, y: 500, w: 60, h: 200 },
+  { x: 520, y: 560, w: 180, h: 60 },
+  { x: 900, y: 560, w: 180, h: 60 },
+  { x: 120, y: 120, w: 180, h: 60 },
+  { x: 1300, y: 1020, w: 180, h: 60 },
+];
+
+const PLAYER_HALF_SIZE = 15;
+
+function collidesWithObstacles(x: number, y: number, obstacles: Obstacle[]) {
+  const left = x - PLAYER_HALF_SIZE;
+  const right = x + PLAYER_HALF_SIZE;
+  const top = y - PLAYER_HALF_SIZE;
+  const bottom = y + PLAYER_HALF_SIZE;
+
+  return obstacles.some((obstacle) => {
+    const obstacleRight = obstacle.x + obstacle.w;
+    const obstacleBottom = obstacle.y + obstacle.h;
+    return right > obstacle.x && left < obstacleRight && bottom > obstacle.y && top < obstacleBottom;
+  });
+}
+
 interface PlayerSprite {
   sprite: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Rectangle;
@@ -31,6 +63,7 @@ export class InfectionTagScene extends Phaser.Scene {
   private readyCountText!: Phaser.GameObjects.Text;
   private mouseX = 0;
   private mouseY = 0;
+  private obstacleBounds: Obstacle[] = [];
 
   // Fog of war
   private fogCanvas!: HTMLCanvasElement;
@@ -46,6 +79,7 @@ export class InfectionTagScene extends Phaser.Scene {
     // Reset all state
     this.playerSprites.clear();
     this.obstacles = [];
+    this.obstacleBounds = OBSTACLES;
     this.mySessionId = '';
     this.isZeroPatient = false;
 
@@ -53,19 +87,6 @@ export class InfectionTagScene extends Phaser.Scene {
     this.add.rectangle(800, 600, 1600, 1200, 0x0a0a14);
 
     // Create obstacles
-    const OBSTACLES = [
-      { x: 720, y: 400, w: 160, h: 40 },
-      { x: 780, y: 340, w: 40, h: 160 },
-      { x: 200, y: 200, w: 120, h: 120 },
-      { x: 1280, y: 200, w: 120, h: 120 },
-      { x: 200, y: 880, w: 120, h: 120 },
-      { x: 1280, y: 880, w: 120, h: 120 },
-      { x: 500, y: 560, w: 40, h: 200 },
-      { x: 1060, y: 440, w: 40, h: 200 },
-      { x: 400, y: 700, w: 80, h: 40 },
-      { x: 1120, y: 460, w: 80, h: 40 },
-    ];
-
     OBSTACLES.forEach((obs) => {
       const rect = this.add.rectangle(obs.x + obs.w / 2, obs.y + obs.h / 2, obs.w, obs.h, 0x2a2a3e);
       this.obstacles.push(rect);
@@ -557,21 +578,32 @@ export class InfectionTagScene extends Phaser.Scene {
       const newX = mySprite.sprite.x + vx * this.moveSpeed * (delta / 1000);
       const newY = mySprite.sprite.y + vy * this.moveSpeed * (delta / 1000);
 
-      // Clamp to arena bounds
-      const clampedX = Phaser.Math.Clamp(newX, 20, 1580);
-      const clampedY = Phaser.Math.Clamp(newY, 20, 1180);
+      // Clamp to arena bounds and resolve wall collisions per-axis for simple sliding.
+      const clampedX = Phaser.Math.Clamp(newX, PLAYER_HALF_SIZE, 1600 - PLAYER_HALF_SIZE);
+      const clampedY = Phaser.Math.Clamp(newY, PLAYER_HALF_SIZE, 1200 - PLAYER_HALF_SIZE);
+
+      let resolvedX = mySprite.sprite.x;
+      let resolvedY = mySprite.sprite.y;
+
+      if (!collidesWithObstacles(clampedX, resolvedY, this.obstacleBounds)) {
+        resolvedX = clampedX;
+      }
+
+      if (!collidesWithObstacles(resolvedX, clampedY, this.obstacleBounds)) {
+        resolvedY = clampedY;
+      }
 
       // Update local position immediately (no interpolation for local player)
-      mySprite.sprite.x = clampedX;
-      mySprite.sprite.y = clampedY;
+      mySprite.sprite.x = resolvedX;
+      mySprite.sprite.y = resolvedY;
       mySprite.sprite.rotation = rotation;
-      mySprite.targetX = clampedX;
-      mySprite.targetY = clampedY;
+      mySprite.targetX = resolvedX;
+      mySprite.targetY = resolvedY;
       mySprite.targetRotation = rotation;
 
       this.room.send('move', {
-        x: clampedX,
-        y: clampedY,
+        x: resolvedX,
+        y: resolvedY,
         rotation: rotation,
       });
     }
