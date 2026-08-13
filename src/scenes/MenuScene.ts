@@ -128,6 +128,11 @@ export class MenuScene extends Phaser.Scene {
       name: '传染抓人',
       description: '【多人联机】黑暗地图，手电筒照明！零号病人有全图视野，其他人只有手电筒。碰到就传染，活过2分钟即胜利！WASD移动',
     },
+    {
+      key: 'RuneGambleScene',
+      name: '赌石猎核',
+      description: '洗石头→拿走加分 or 做成近战/远程武器打怪！铁矿做锤、黑曜石做刃、水晶做步枪、琥珀做散弹、帝王绿做帝王爪/帝王炮！怪物掉灵核加分。Shift疾跑 | 左键清洗 | 空格攻击 | E躲藏 | Tab搓武器',
+    },
     // Add new prototypes here
   ];
 
