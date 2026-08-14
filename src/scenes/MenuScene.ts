@@ -131,7 +131,12 @@ export class MenuScene extends Phaser.Scene {
     {
       key: 'RuneGambleScene',
       name: '赌石猎核',
-      description: '洗石头→拿走加分 or 做成近战/远程武器打怪！铁矿做锤、黑曜石做刃、水晶做步枪、琥珀做散弹、帝王绿做帝王爪/帝王炮！怪物掉灵核加分。Shift疾跑 | 左键清洗 | 空格攻击 | E躲藏 | Tab搓武器',
+      description: '洗石头→拿走加分 or 做成近战/远程武器打怪！铁矿做锤、黑曜石做刃、水晶做步枪、琥珀做散弹、帝王绿做帝王爪/帝王炮！怪物掉灵核加分。Shift疾跑 | 左键清洗 | 空格攻击 | E躲藏 | 数字键搓武器 | Tab图鉴',
+    },
+    {
+      key: 'TrapGambleScene',
+      name: '赌石陷阱',
+      description: '洗石头→搓陷阱打怪！玩家无直接攻击，只能靠陷阱！6种形状：圆形/十字/锥形/直线/方形/环形。铁矿做刺阵、黑曜石做十字刀刃、水晶做锥刺、琥珀做火锥、帝王绿做冲击波！怪物掉灵核加分。Shift疾跑 | 左键清洗 | 空格放陷阱 | E躲藏 | 数字键搓陷阱 | Tab图鉴',
     },
     // Add new prototypes here
   ];

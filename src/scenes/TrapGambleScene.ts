@@ -68,11 +68,9 @@ const STONE_TIERS: StoneTier[] = [
   { type: 'trash', color: 0x555555, glowColor: 0x666666, name: '废料', minVal: 5, maxVal: 15, weight: 35, clue: '灰色…', isUtility: false },
   { type: 'common', color: 0xddccaa, glowColor: 0xddccaa, name: '普通石', minVal: 20, maxVal: 50, weight: 20, clue: '白色…', isUtility: false },
 
-  // ── 近战专用石 ──
+  // ── 陷阱专用石 ──
   { type: 'iron', color: 0x888899, glowColor: 0xaaaabb, name: '铁矿', minVal: 40, maxVal: 80, weight: 10, clue: '金属光泽…', isUtility: false },
   { type: 'obsidian', color: 0x1a1a3a, glowColor: 0x3344aa, name: '黑曜石', minVal: 60, maxVal: 120, weight: 8, clue: '黑色锋利…', isUtility: false },
-
-  // ── 远程专用石 ──
   { type: 'crystal', color: 0x66ccff, glowColor: 0x88ddff, name: '水晶', minVal: 50, maxVal: 100, weight: 8, clue: '透明折射…', isUtility: false },
   { type: 'amber', color: 0xffaa00, glowColor: 0xffcc44, name: '琥珀', minVal: 40, maxVal: 90, weight: 7, clue: '金色温润…', isUtility: false },
 
@@ -90,7 +88,7 @@ const STONE_TIERS: StoneTier[] = [
 const STONE_TIERS_TOTAL_WEIGHT = STONE_TIERS.reduce((s, t) => s + t.weight, 0);
 
 // ─── Stone state machine ─────────────────────────────────────
-// 0=未清洗  1=清洗中  2=已清洗(待决策)  3=已拿走  4=已做成武器  5=已放弃
+// 0=未清洗  1=清洗中  2=已清洗(待决策)  3=已拿走  4=已做成陷阱  5=已放弃
 type StoneState = 0 | 1 | 2 | 3 | 4 | 5;
 
 interface Stone {
@@ -106,25 +104,84 @@ interface Stone {
   promptText: Phaser.GameObjects.Text;
 }
 
-// ─── Weapon ───────────────────────────────────────────────────
-type WeaponMode = 'none' | 'melee' | 'ranged';
+// ─── Trap system ─────────────────────────────────────────────
 
-interface Weapon {
-  mode: WeaponMode;
-  weaponName: string;
-  stoneType: StoneType;  // 主石种（用于武器颜色/弹幕颜色）
-  durability: number;
-  maxDurability: number;
+// 陷阱攻击范围形状
+type TrapShape = 'circle' | 'cross' | 'cone' | 'line' | 'square' | 'ring';
+
+interface TrapRecipe {
+  name: string;
+  shape: TrapShape;
+  ingredients: Partial<Record<StoneType, number>>;
   damage: number;
-  range: number;
-  cooldown: number;
-  knockback: number;
-  projectileSpeed: number;
-  projectileCount: number;
-  spread: number;
+  range: number;        // 主范围（半径或长度）
+  stunDuration: number; // 命中后眩晕时间(ms)
+  cooldown: number;     // 触发冷却(ms)
+  charges: number;      // 可触发次数
+  desc: string;
 }
 
-// ─── Constants（必须在 CRAFT_RECIPES 之前，配方引用了 RANGED_RANGE 等）──
+const TRAP_RECIPES: TrapRecipe[] = [
+  // ── 圆形范围 ──
+  { name: '尖刺地刺', shape: 'circle', desc: '圆形范围·低伤',
+    ingredients: { trash: 2 },
+    damage: 15, range: 60, stunDuration: 800, cooldown: 1500, charges: 3 },
+
+  { name: '铁刺阵', shape: 'circle', desc: '圆形范围·中伤',
+    ingredients: { iron: 1, common: 1 },
+    damage: 30, range: 70, stunDuration: 1200, cooldown: 1500, charges: 3 },
+
+  { name: '玉刺阵', shape: 'circle', desc: '圆形范围·高伤',
+    ingredients: { good: 1, common: 1 },
+    damage: 45, range: 80, stunDuration: 1500, cooldown: 1500, charges: 4 },
+
+  // ── 十字形范围 ──
+  { name: '十字刀刃', shape: 'cross', desc: '十字范围·中伤',
+    ingredients: { iron: 1, trash: 1 },
+    damage: 25, range: 90, stunDuration: 1000, cooldown: 1800, charges: 3 },
+
+  { name: '黑曜十字', shape: 'cross', desc: '十字范围·高伤远',
+    ingredients: { obsidian: 1, iron: 1 },
+    damage: 50, range: 110, stunDuration: 1800, cooldown: 1800, charges: 3 },
+
+  // ── 锥形范围 ──
+  { name: '水晶锥刺', shape: 'cone', desc: '锥形范围·中伤',
+    ingredients: { crystal: 1, common: 1 },
+    damage: 30, range: 100, stunDuration: 1200, cooldown: 2000, charges: 3 },
+
+  { name: '琥珀火锥', shape: 'cone', desc: '锥形范围·范围大',
+    ingredients: { amber: 1, common: 1 },
+    damage: 25, range: 120, stunDuration: 1500, cooldown: 2000, charges: 4 },
+
+  // ── 直线范围 ──
+  { name: '直线刀墙', shape: 'line', desc: '直线范围·远距离',
+    ingredients: { obsidian: 1, trash: 1 },
+    damage: 35, range: 160, stunDuration: 1000, cooldown: 2000, charges: 3 },
+
+  { name: '翠玉射线', shape: 'line', desc: '直线范围·超高伤',
+    ingredients: { rare: 1, good: 1 },
+    damage: 60, range: 200, stunDuration: 1500, cooldown: 2000, charges: 3 },
+
+  // ── 方形范围 ──
+  { name: '铁笼陷阱', shape: 'square', desc: '方形范围·中伤',
+    ingredients: { iron: 2 },
+    damage: 35, range: 80, stunDuration: 2000, cooldown: 2500, charges: 2 },
+
+  { name: '玉笼陷阱', shape: 'square', desc: '方形范围·高伤长晕',
+    ingredients: { good: 1, iron: 1 },
+    damage: 50, range: 90, stunDuration: 3000, cooldown: 2500, charges: 2 },
+
+  // ── 环形范围（外圈命中，中心安全）──
+  { name: '雷石冲击波', shape: 'ring', desc: '环形范围·范围大',
+    ingredients: { bomb: 1, common: 1 },
+    damage: 40, range: 100, stunDuration: 2000, cooldown: 2500, charges: 2 },
+
+  { name: '帝王冲击波', shape: 'ring', desc: '环形范围·超高伤',
+    ingredients: { legendary: 1, rare: 1 },
+    damage: 80, range: 140, stunDuration: 3000, cooldown: 2500, charges: 2 },
+];
+
+// ─── Constants ─────────────────────────────────────────────
 const PLAYER_BASE_SPEED = 160;
 const PLAYER_SPRINT_SPEED = 260;
 const STAMINA_MAX = 100;
@@ -140,11 +197,6 @@ const MONSTER_STUN_DURATION = 2000;
 
 const HIDE_SPOT_RANGE = 40;
 
-const MELEE_RANGE = 50;
-const MELEE_COOLDOWN = 400;
-const RANGED_RANGE = 300;
-const RANGED_PROJECTILE_SPEED = 400;
-const RANGED_COOLDOWN = 300;
 const BOMB_RANGE = 200;
 const BOMB_STUN = 5000;
 
@@ -153,78 +205,9 @@ const MONSTER_ELITE_HP = 60;
 const CORE_VALUE = 50;
 const CORE_ELITE_VALUE = 200;
 
-// ── 搓武器配方：需要多种石头组合 ──
-interface CraftRecipe {
-  name: string;
-  mode: 'melee' | 'ranged';
-  ingredients: Partial<Record<StoneType, number>>;  // 需要的石头及数量
-  result: Omit<Weapon, 'mode' | 'weaponName' | 'stoneType'>;
-  desc: string;
-}
-
-const CRAFT_RECIPES: CraftRecipe[] = [
-  // ── 近战 ──
-  { name: '石棍', mode: 'melee', desc: '低伤高耐久',
-    ingredients: { trash: 2 },
-    result: { durability: 6, maxDurability: 6, damage: 15, range: 45, cooldown: 400, knockback: 15, projectileSpeed: 0, projectileCount: 1, spread: 0 } },
-
-  { name: '石刀', mode: 'melee', desc: '中伤中耐久',
-    ingredients: { common: 1, trash: 1 },
-    result: { durability: 8, maxDurability: 8, damage: 25, range: 50, cooldown: 400, knockback: 12, projectileSpeed: 0, projectileCount: 1, spread: 0 } },
-
-  { name: '铁锤', mode: 'melee', desc: '中伤+强击退',
-    ingredients: { iron: 2, common: 1 },
-    result: { durability: 12, maxDurability: 12, damage: 35, range: 55, cooldown: 500, knockback: 30, projectileSpeed: 0, projectileCount: 1, spread: 0 } },
-
-  { name: '黑曜刃', mode: 'melee', desc: '高伤低耐久',
-    ingredients: { obsidian: 1, iron: 1 },
-    result: { durability: 6, maxDurability: 6, damage: 55, range: 50, cooldown: 350, knockback: 10, projectileSpeed: 0, projectileCount: 1, spread: 0 } },
-
-  { name: '玉刃', mode: 'melee', desc: '高伤高耐久',
-    ingredients: { good: 1, common: 1 },
-    result: { durability: 10, maxDurability: 10, damage: 40, range: 55, cooldown: 350, knockback: 15, projectileSpeed: 0, projectileCount: 1, spread: 0 } },
-
-  { name: '翠玉矛', mode: 'melee', desc: '远距离高伤',
-    ingredients: { rare: 1, good: 1 },
-    result: { durability: 14, maxDurability: 14, damage: 60, range: 70, cooldown: 350, knockback: 20, projectileSpeed: 0, projectileCount: 1, spread: 0 } },
-
-  { name: '帝王爪', mode: 'melee', desc: '超高伤快攻速',
-    ingredients: { legendary: 1, rare: 1 },
-    result: { durability: 20, maxDurability: 20, damage: 100, range: 60, cooldown: 250, knockback: 25, projectileSpeed: 0, projectileCount: 1, spread: 0 } },
-
-  // ── 远程 ──
-  { name: '弹弓', mode: 'ranged', desc: '弱远程',
-    ingredients: { trash: 2 },
-    result: { durability: 5, maxDurability: 5, damage: 12, range: RANGED_RANGE, cooldown: RANGED_COOLDOWN, knockback: 0, projectileSpeed: 300, projectileCount: 1, spread: 0 } },
-
-  { name: '手枪', mode: 'ranged', desc: '中伤中弹药',
-    ingredients: { common: 2 },
-    result: { durability: 6, maxDurability: 6, damage: 20, range: RANGED_RANGE, cooldown: RANGED_COOLDOWN, knockback: 0, projectileSpeed: 400, projectileCount: 1, spread: 0 } },
-
-  { name: '水晶步枪', mode: 'ranged', desc: '远程高伤',
-    ingredients: { crystal: 1, common: 1 },
-    result: { durability: 8, maxDurability: 8, damage: 30, range: RANGED_RANGE, cooldown: RANGED_COOLDOWN, knockback: 0, projectileSpeed: 500, projectileCount: 1, spread: 0 } },
-
-  { name: '琥珀散弹', mode: 'ranged', desc: '5发散射',
-    ingredients: { amber: 1, common: 1 },
-    result: { durability: 4, maxDurability: 4, damage: 12, range: RANGED_RANGE, cooldown: RANGED_COOLDOWN, knockback: 0, projectileSpeed: 350, projectileCount: 5, spread: Math.PI / 6 } },
-
-  { name: '玉弓', mode: 'ranged', desc: '低伤多弹药',
-    ingredients: { good: 1, common: 1 },
-    result: { durability: 8, maxDurability: 8, damage: 28, range: RANGED_RANGE, cooldown: RANGED_COOLDOWN, knockback: 0, projectileSpeed: 450, projectileCount: 1, spread: 0 } },
-
-  { name: '翠玉步枪', mode: 'ranged', desc: '远程高伤',
-    ingredients: { rare: 1, good: 1 },
-    result: { durability: 10, maxDurability: 10, damage: 45, range: RANGED_RANGE, cooldown: RANGED_COOLDOWN, knockback: 0, projectileSpeed: 550, projectileCount: 1, spread: 0 } },
-
-  { name: '帝王炮', mode: 'ranged', desc: '3发散射超高伤',
-    ingredients: { legendary: 1, rare: 1 },
-    result: { durability: 8, maxDurability: 8, damage: 80, range: RANGED_RANGE, cooldown: RANGED_COOLDOWN, knockback: 0, projectileSpeed: 600, projectileCount: 3, spread: Math.PI / 8 } },
-];
-
 // ─── Scene ────────────────────────────────────────────────────
 
-export class RuneGambleScene extends Phaser.Scene {
+export class TrapGambleScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Arc;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
@@ -237,7 +220,7 @@ export class RuneGambleScene extends Phaser.Scene {
 
   // Quickbar (数字键即时搓)
   private quickbarText!: Phaser.GameObjects.Text;
-  private quickbarRecipes: CraftRecipe[] = [];  // 当前可搓的配方列表（动态更新）
+  private quickbarRecipes: TrapRecipe[] = [];
 
   // Map
   private mapWidth = 2400;
@@ -250,7 +233,7 @@ export class RuneGambleScene extends Phaser.Scene {
   private fogImage!: Phaser.GameObjects.Image;
   private fogCanvas!: HTMLCanvasElement;
   private fogCtx!: CanvasRenderingContext2D;
-  private fogTextureKey = 'runeGambleFog';
+  private fogTextureKey = 'trapGambleFog';
   private viewRadius = 180;
   private screenW = 800;
   private screenH = 600;
@@ -270,17 +253,10 @@ export class RuneGambleScene extends Phaser.Scene {
   private aimAngle = 0;
   private sprayGraphics!: Phaser.GameObjects.Graphics;
 
-  // Weapon
-  private weapon: Weapon = { mode: 'none', weaponName: '', stoneType: 'trash', durability: 0, maxDurability: 0, damage: 0, range: 0, cooldown: 0, knockback: 0, projectileSpeed: 0, projectileCount: 1, spread: 0 };
-  private meleeCooldown = 0;
-  private rangedCooldown = 0;
-  private projectiles: { sprite: Phaser.GameObjects.Arc; damage: number; vx: number; vy: number }[] = [];
-  private weaponGraphics!: Phaser.GameObjects.Graphics;
-
   // Inventory: collected stones (type → count)
   private inventory: Map<StoneType, number> = new Map();
-  private coreCount = 0;  // 灵核数量
-  private coreScore = 0;  // 灵核总分（精英=200，普通=50）
+  private coreCount = 0;
+  private coreScore = 0;
 
   // Recipe codex (Tab 查看全部配方，只读)
   private codexOpen = false;
@@ -288,6 +264,9 @@ export class RuneGambleScene extends Phaser.Scene {
   private codexTitle!: Phaser.GameObjects.Text;
   private codexTexts: Phaser.GameObjects.Text[] = [];
   private codexBgRects: Phaser.GameObjects.Rectangle[] = [];
+
+  // Placed traps
+  private traps: PlacedTrap[] = [];
 
   // Player stats
   private health = 100;
@@ -312,8 +291,8 @@ export class RuneGambleScene extends Phaser.Scene {
   // Respawn timers
   private stoneRespawnTimer = 0;
   private monsterRespawnTimer = 0;
-  private stoneRespawnInterval = 15000;  // 每15秒补充石头
-  private monsterRespawnInterval = 20000; // 每20秒补充怪物
+  private stoneRespawnInterval = 15000;
+  private monsterRespawnInterval = 20000;
   private maxStones = 30;
   private maxMonsters = 5;
 
@@ -328,11 +307,14 @@ export class RuneGambleScene extends Phaser.Scene {
   private messageText!: Phaser.GameObjects.Text;
   private evacText!: Phaser.GameObjects.Text;
   private hidePromptText!: Phaser.GameObjects.Text;
-  private weaponText!: Phaser.GameObjects.Text;
+  private trapText!: Phaser.GameObjects.Text;
   private inventoryText!: Phaser.GameObjects.Text;
 
+  // Trap placement preview
+  private trapPreviewGraphics!: Phaser.GameObjects.Graphics;
+
   constructor() {
-    super({ key: 'RuneGambleScene' });
+    super({ key: 'TrapGambleScene' });
   }
 
   create() {
@@ -352,10 +334,7 @@ export class RuneGambleScene extends Phaser.Scene {
     this.cores = [];
     this.obstacles = [];
     this.hideSpots = [];
-    this.projectiles = [];
-    this.weapon = { mode: 'none', weaponName: '', stoneType: 'trash', durability: 0, maxDurability: 0, damage: 0, range: 0, cooldown: 0, knockback: 0, projectileSpeed: 0, projectileCount: 1, spread: 0 };
-    this.meleeCooldown = 0;
-    this.rangedCooldown = 0;
+    this.traps = [];
     this.stamina = STAMINA_MAX;
     this.isSprinting = false;
     this.isHidden = false;
@@ -387,10 +366,10 @@ export class RuneGambleScene extends Phaser.Scene {
     this.sprayGraphics = this.add.graphics();
     this.sprayGraphics.setDepth(7);
 
-    this.weaponGraphics = this.add.graphics();
-    this.weaponGraphics.setDepth(7);
+    this.trapPreviewGraphics = this.add.graphics();
+    this.trapPreviewGraphics.setDepth(6.5);
 
-    this.showMessage('🎰 赌石猎核！\n\n左键 = 水枪（清洗石头 / 喷晕怪物）\n空格 = 攻击（近战/远程自动）\n数字键1~9 = 即时搓武器（材料够才显示）\nTab = 查看全部配方\n\n铁矿/黑曜石 → 只能做近战\n水晶/琥珀 → 只能做远程\n好玉/极品玉/帝王绿 → 近战远程都能做\n药石回血 | 盾石护盾 | 雷石范围眩晕\n\n打怪掉灵核 → 灵核加分！\nShift疾跑 | E键躲藏\n\n价值达' + this.goalScore + ' → 到撤离点撤离！', 9000);
+    this.showMessage('🎰 赌石猎核·陷阱版！\n\n左键 = 水枪（清洗石头 / 喷晕怪物）\n空格 = 放置陷阱（需先搓出陷阱）\n数字键1~9 = 即时搓陷阱（材料够才显示）\nTab = 查看全部配方\n\n玩家无直接攻击！只能靠陷阱打怪！\n陷阱形状各异：圆形/十字/锥形/直线/方形/环形\n\n铁矿→刺阵 | 黑曜石→十字/直线\n水晶→锥刺 | 琥珀→火锥\n帝王绿→帝王冲击波\n药石回血 | 盾石护盾 | 雷石→冲击波\n\n打怪掉灵核 → 灵核加分！\nShift疾跑 | E键躲藏\n\n价值达' + this.goalScore + ' → 到撤离点撤离！', 9000);
   }
 
   // ─── Map generation ─────────────────────────────────────────
@@ -582,46 +561,50 @@ export class RuneGambleScene extends Phaser.Scene {
         continue;
       }
 
-      const radius = Phaser.Math.Between(14, 24);
-      const tier = this.rollStoneType();
-      const stoneValue = tier.isUtility ? 0 : Phaser.Math.Between(tier.minVal, tier.maxVal);
-
-      const innerG = this.add.graphics();
-      innerG.setPosition(x, y);
-      innerG.setDepth(1.5);
-      innerG.fillStyle(tier.color, 1);
-      innerG.fillCircle(0, 0, radius * 0.7);
-      if (tier.type === 'rare' || tier.type === 'legendary') {
-        innerG.fillStyle(tier.glowColor, 0.3);
-        innerG.fillCircle(0, 0, radius * 1.0);
-      }
-      innerG.setAlpha(0);
-
-      const dirtColors = [0x3a2a1a, 0x2a2a2a, 0x3a322a, 0x2a1a1a];
-      const dirtColor = Phaser.Utils.Array.GetRandom(dirtColors);
-      const shellG = this.add.graphics();
-      shellG.fillStyle(dirtColor, 0.9);
-      shellG.fillCircle(0, 0, radius * 1.1);
-      shellG.setPosition(x, y);
-      shellG.setDepth(2);
-
-      const prompt = this.add.text(x, y - radius - 12, '', {
-        fontSize: '12px', color: '#ffff00',
-      }).setOrigin(0.5).setDepth(6);
-
-      this.stones.push({
-        x, y, radius,
-        stoneType: tier.type,
-        stoneValue,
-        state: 0,
-        cleanProgress: 0,
-        shellSprite: shellG,
-        innerSprite: innerG,
-        promptText: prompt,
-      });
+      this.stones.push(this.makeStone(x, y));
       placed++;
       attempts++;
     }
+  }
+
+  private makeStone(x: number, y: number): Stone {
+    const radius = Phaser.Math.Between(14, 24);
+    const tier = this.rollStoneType();
+    const stoneValue = tier.isUtility ? 0 : Phaser.Math.Between(tier.minVal, tier.maxVal);
+
+    const innerG = this.add.graphics();
+    innerG.setPosition(x, y);
+    innerG.setDepth(1.5);
+    innerG.fillStyle(tier.color, 1);
+    innerG.fillCircle(0, 0, radius * 0.7);
+    if (tier.type === 'rare' || tier.type === 'legendary') {
+      innerG.fillStyle(tier.glowColor, 0.3);
+      innerG.fillCircle(0, 0, radius * 1.0);
+    }
+    innerG.setAlpha(0);
+
+    const dirtColors = [0x3a2a1a, 0x2a2a2a, 0x3a322a, 0x2a1a1a];
+    const dirtColor = Phaser.Utils.Array.GetRandom(dirtColors);
+    const shellG = this.add.graphics();
+    shellG.fillStyle(dirtColor, 0.9);
+    shellG.fillCircle(0, 0, radius * 1.1);
+    shellG.setPosition(x, y);
+    shellG.setDepth(2);
+
+    const prompt = this.add.text(x, y - radius - 12, '', {
+      fontSize: '12px', color: '#ffff00',
+    }).setOrigin(0.5).setDepth(6);
+
+    return {
+      x, y, radius,
+      stoneType: tier.type,
+      stoneValue,
+      state: 0,
+      cleanProgress: 0,
+      shellSprite: shellG,
+      innerSprite: innerG,
+      promptText: prompt,
+    };
   }
 
   private rollStoneType(): StoneTier {
@@ -633,7 +616,7 @@ export class RuneGambleScene extends Phaser.Scene {
     return STONE_TIERS[0];
   }
 
-  // ── 补充石头：当石头数量不足时刷新 ──
+  // ── 补充石头 ──
   private spawnStone() {
     let attempts = 0;
     while (attempts < 200) {
@@ -643,48 +626,12 @@ export class RuneGambleScene extends Phaser.Scene {
       if (Phaser.Math.Distance.Between(x, y, 80, 80) < 150) { attempts++; continue; }
       if (this.isInsideObstacle(x, y, 18)) { attempts++; continue; }
 
-      const radius = Phaser.Math.Between(14, 24);
-      const tier = this.rollStoneType();
-      const stoneValue = tier.isUtility ? 0 : Phaser.Math.Between(tier.minVal, tier.maxVal);
-
-      const innerG = this.add.graphics();
-      innerG.setPosition(x, y);
-      innerG.setDepth(1.5);
-      innerG.fillStyle(tier.color, 1);
-      innerG.fillCircle(0, 0, radius * 0.7);
-      if (tier.type === 'rare' || tier.type === 'legendary') {
-        innerG.fillStyle(tier.glowColor, 0.3);
-        innerG.fillCircle(0, 0, radius * 1.0);
-      }
-      innerG.setAlpha(0);
-
-      const dirtColors = [0x3a2a1a, 0x2a2a2a, 0x3a322a, 0x2a1a1a];
-      const dirtColor = Phaser.Utils.Array.GetRandom(dirtColors);
-      const shellG = this.add.graphics();
-      shellG.fillStyle(dirtColor, 0.9);
-      shellG.fillCircle(0, 0, radius * 1.1);
-      shellG.setPosition(x, y);
-      shellG.setDepth(2);
-
-      const prompt = this.add.text(x, y - radius - 12, '', {
-        fontSize: '12px', color: '#ffff00',
-      }).setOrigin(0.5).setDepth(6);
-
-      this.stones.push({
-        x, y, radius,
-        stoneType: tier.type,
-        stoneValue,
-        state: 0,
-        cleanProgress: 0,
-        shellSprite: shellG,
-        innerSprite: innerG,
-        promptText: prompt,
-      });
+      this.stones.push(this.makeStone(x, y));
       return;
     }
   }
 
-  // ── 补充怪物：当怪物数量不足时刷新 ──
+  // ── 补充怪物 ──
   private spawnMonster() {
     let attempts = 0;
     while (attempts < 200) {
@@ -694,7 +641,7 @@ export class RuneGambleScene extends Phaser.Scene {
       if (Phaser.Math.Distance.Between(x, y, 80, 80) < 400) { attempts++; continue; }
       if (this.isInsideObstacle(x, y, 14)) { attempts++; continue; }
 
-      const isElite = Math.random() < 0.25; // 25%概率精英
+      const isElite = Math.random() < 0.25;
       const hp = isElite ? MONSTER_ELITE_HP : MONSTER_HP;
       const color = isElite ? 0xff4444 : 0xff00ff;
       const size = isElite ? 32 : 24;
@@ -728,7 +675,6 @@ export class RuneGambleScene extends Phaser.Scene {
 
   // ── 定时补充石头和怪物 ──
   private updateRespawn(delta: number) {
-    // 统计可用石头（未拿走/未做成武器的）
     const availableStones = this.stones.filter(s => s.state === 0 || s.state === 1 || s.state === 2).length;
 
     this.stoneRespawnTimer += delta;
@@ -768,7 +714,7 @@ export class RuneGambleScene extends Phaser.Scene {
         continue;
       }
 
-      const isElite = placed < 1; // 前1只为精英怪
+      const isElite = placed < 1;
       const hp = isElite ? MONSTER_ELITE_HP : MONSTER_HP;
       const color = isElite ? 0xff4444 : 0xff00ff;
       const size = isElite ? 32 : 24;
@@ -776,10 +722,6 @@ export class RuneGambleScene extends Phaser.Scene {
       const sprite = this.add.rectangle(x, y, size, size, color);
       sprite.setDepth(5);
       if (isElite) sprite.setStrokeStyle(2, 0xffff00);
-
-      // HP bar
-      const hpBar = this.add.graphics();
-      hpBar.setDepth(5.5);
 
       this.monsters.push({
         sprite,
@@ -883,8 +825,8 @@ export class RuneGambleScene extends Phaser.Scene {
       fontSize: '18px', color: '#ffdd00',
     }).setScrollFactor(0).setDepth(20);
 
-    this.weaponText = this.add.text(16, 64, '武器: 无', {
-      fontSize: '16px', color: '#88ccff',
+    this.trapText = this.add.text(16, 64, '陷阱: 无', {
+      fontSize: '16px', color: '#ff88ff',
     }).setScrollFactor(0).setDepth(20);
 
     this.statusText = this.add.text(16, 88, '', {
@@ -897,7 +839,7 @@ export class RuneGambleScene extends Phaser.Scene {
       backgroundColor: '#00000088', padding: { x: 6, y: 4 },
     }).setScrollFactor(0).setDepth(20);
 
-    // Quickbar (bottom center, shows craftable recipes with number keys)
+    // Quickbar (bottom center, shows craftable traps with number keys)
     this.quickbarText = this.add.text(400, 575, '', {
       fontSize: '13px', color: '#ffffff', align: 'center',
       backgroundColor: '#000000aa', padding: { x: 8, y: 3 },
@@ -997,17 +939,27 @@ export class RuneGambleScene extends Phaser.Scene {
     }
   }
 
-  private updateWeaponUI() {
-    if (this.weapon.mode === 'none') {
-      const newText = '武器: 无';
-      if (this.weaponText.text !== newText) this.weaponText.setText(newText);
+  private updateTrapUI() {
+    const readyTraps = this.traps.filter(t => t.charges > 0);
+    if (readyTraps.length === 0) {
+      const newText = '陷阱: 无';
+      if (this.trapText.text !== newText) this.trapText.setText(newText);
     } else {
-      const modeStr = this.weapon.mode === 'melee' ? '⚔️' : '🏹';
-      const durStr = this.weapon.mode === 'melee'
-        ? `耐久 ${this.weapon.durability}/${this.weapon.maxDurability}`
-        : `弹药 ${this.weapon.durability}/${this.weapon.maxDurability}`;
-      const newText = `${modeStr}${this.weapon.weaponName} ${durStr} 伤${this.weapon.damage}`;
-      if (this.weaponText.text !== newText) this.weaponText.setText(newText);
+      const t = readyTraps[0];
+      const shapeIcon = this.getShapeIcon(t.recipe.shape);
+      const newText = `${shapeIcon}${t.recipe.name} 剩${t.charges}次 伤${t.recipe.damage}`;
+      if (this.trapText.text !== newText) this.trapText.setText(newText);
+    }
+  }
+
+  private getShapeIcon(shape: TrapShape): string {
+    switch (shape) {
+      case 'circle': return '⭕';
+      case 'cross': return '✛';
+      case 'cone': return '◢';
+      case 'line': return '▬';
+      case 'square': return '⬛';
+      case 'ring': return '◯';
     }
   }
 
@@ -1120,7 +1072,7 @@ export class RuneGambleScene extends Phaser.Scene {
       this.tryHide();
     }
 
-    // 数字键即时搓武器
+    // 数字键即时搓陷阱
     for (let i = 0; i < this.numberKeys.length; i++) {
       if (Phaser.Input.Keyboard.JustDown(this.numberKeys[i])) {
         if (i < this.quickbarRecipes.length) {
@@ -1130,13 +1082,9 @@ export class RuneGambleScene extends Phaser.Scene {
       }
     }
 
-    // 空格：攻击（近战/远程自动判断）
+    // 空格：放置陷阱（在玩家当前位置放置最近的可用陷阱）
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-      if (this.weapon.mode === 'melee') {
-        this.doMeleeAttack();
-      } else if (this.weapon.mode === 'ranged') {
-        this.doRangedAttack();
-      }
+      this.placeTrap();
     }
 
     // 躲避点提示
@@ -1169,22 +1117,20 @@ export class RuneGambleScene extends Phaser.Scene {
     }
 
     this.updateMonsters(delta);
-    this.updateProjectiles(delta);
+    this.updateTraps(delta);
     this.checkMonsterCollision();
     this.checkCorePickup();
     this.updateRespawn(delta);
     this.checkEvacuation(delta);
     this.updateFog();
     this.updateStatusUI();
-    this.updateWeaponUI();
+    this.updateTrapUI();
     this.updateInventoryUI();
     this.updateQuickbar();
     this.updateScoreUI();
     this.drawStaminaBar();
-    this.drawWeaponVisual();
+    this.drawTrapPreview();
 
-    if (this.meleeCooldown > 0) this.meleeCooldown -= delta;
-    if (this.rangedCooldown > 0) this.rangedCooldown -= delta;
     if (this.damageCooldown > 0) this.damageCooldown -= delta;
   }
 
@@ -1515,7 +1461,7 @@ export class RuneGambleScene extends Phaser.Scene {
       // 普通石头入背包
       const count = this.inventory.get(tier.type) ?? 0;
       this.inventory.set(tier.type, count + 1);
-      this.showMessage(`📦 捡起 ${tier.name}！\n数字键搓武器 | 空格攻击`, 1500);
+      this.showMessage(`📦 捡起 ${tier.name}！\n数字键搓陷阱 | 空格放置`, 1500);
     }
 
     stone.promptText.setText('');
@@ -1526,7 +1472,7 @@ export class RuneGambleScene extends Phaser.Scene {
 
   // ── 更新快捷栏（显示当前可搓的配方 + 数字键）──
   private updateQuickbar() {
-    this.quickbarRecipes = CRAFT_RECIPES.filter(r => this.canCraft(r)).slice(0, 9);
+    this.quickbarRecipes = TRAP_RECIPES.filter(r => this.canCraft(r)).slice(0, 9);
 
     if (this.quickbarRecipes.length === 0) {
       const newText = '背包材料不足，继续捡石头';
@@ -1537,7 +1483,7 @@ export class RuneGambleScene extends Phaser.Scene {
     const parts: string[] = [];
     for (let i = 0; i < this.quickbarRecipes.length; i++) {
       const r = this.quickbarRecipes[i];
-      const icon = r.mode === 'melee' ? '⚔️' : '🏹';
+      const icon = this.getShapeIcon(r.shape);
       parts.push(`${i + 1}${icon}${r.name}`);
     }
     const newText = parts.join('  ');
@@ -1573,8 +1519,8 @@ export class RuneGambleScene extends Phaser.Scene {
     const startY = 150;
     const lineH = 26;
 
-    for (let i = 0; i < CRAFT_RECIPES.length; i++) {
-      const recipe = CRAFT_RECIPES[i];
+    for (let i = 0; i < TRAP_RECIPES.length; i++) {
+      const recipe = TRAP_RECIPES[i];
       const canCraft = this.canCraft(recipe);
 
       const y = startY + i * lineH;
@@ -1591,8 +1537,8 @@ export class RuneGambleScene extends Phaser.Scene {
         ingreStrs.push(`${ok ? '✓' : '✗'}${tier.name} ${have}/${count}`);
       }
 
-      const modeIcon = recipe.mode === 'melee' ? '⚔️' : '🏹';
-      const text = ` ${modeIcon}${recipe.name} ${recipe.desc} | ${ingreStrs.join(' + ')}`;
+      const shapeIcon = this.getShapeIcon(recipe.shape);
+      const text = ` ${shapeIcon}${recipe.name} ${recipe.desc} | ${ingreStrs.join(' + ')}`;
       const txt = this.add.text(170, y - 10, text, {
         fontSize: '13px', color: canCraft ? '#ffffff' : '#666666',
       }).setScrollFactor(0).setDepth(42);
@@ -1601,7 +1547,7 @@ export class RuneGambleScene extends Phaser.Scene {
   }
 
   // ── 检查能否搓某配方 ──
-  private canCraft(recipe: CraftRecipe): boolean {
+  private canCraft(recipe: TrapRecipe): boolean {
     for (const [type, count] of Object.entries(recipe.ingredients)) {
       const have = this.inventory.get(type as StoneType) ?? 0;
       if (have < count) return false;
@@ -1609,23 +1555,8 @@ export class RuneGambleScene extends Phaser.Scene {
     return true;
   }
 
-  // ── 取配方中价值最高的石头作为主石种（决定武器/弹幕颜色）──
-  private getPrimaryStoneType(recipe: CraftRecipe): StoneType {
-    let best: StoneType = 'trash';
-    let bestVal = -1;
-    for (const type of Object.keys(recipe.ingredients) as StoneType[]) {
-      const tier = STONE_TIERS.find(t => t.type === type)!;
-      const val = tier.isUtility ? 0 : (tier.minVal + tier.maxVal) / 2;
-      if (val > bestVal) {
-        bestVal = val;
-        best = type;
-      }
-    }
-    return best;
-  }
-
-  // ── 搓武器（数字键即时搓）──
-  private tryCraft(recipe: CraftRecipe) {
+  // ── 搓陷阱（数字键即时搓）──
+  private tryCraft(recipe: TrapRecipe) {
     if (!this.canCraft(recipe)) {
       this.showMessage('材料不足！', 1000);
       return;
@@ -1637,188 +1568,284 @@ export class RuneGambleScene extends Phaser.Scene {
       this.inventory.set(type as StoneType, have - count);
     }
 
-    // 生成武器 — 主石种取配方中价值最高的材料
-    const primaryType = this.getPrimaryStoneType(recipe);
-    this.weapon = {
-      mode: recipe.mode,
-      weaponName: recipe.name,
-      stoneType: primaryType,
-      ...recipe.result,
+    // 生成陷阱（放入待放置列表）
+    const trap: PlacedTrap = {
+      recipe,
+      x: 0,
+      y: 0,
+      angle: 0,
+      charges: recipe.charges,
+      cooldown: 0,
+      placed: false,
+      sprite: null,
+      rangeSprite: null,
     };
+    this.traps.push(trap);
 
-    const modeStr = recipe.mode === 'melee' ? '⚔️' : '🏹';
-    const durStr = recipe.mode === 'melee' ? `耐久${recipe.result.durability}` : `弹药${recipe.result.durability}`;
-    this.showMessage(`${modeStr} 搓出 ${recipe.name}！${durStr} 伤${recipe.result.damage}`, 1500);
+    const shapeIcon = this.getShapeIcon(recipe.shape);
+    this.showMessage(`${shapeIcon} 搓出 ${recipe.name}！伤${recipe.damage} 晕${(recipe.stunDuration / 1000).toFixed(1)}s ${recipe.charges}次`, 1500);
   }
 
-  // ── 近战攻击 ──
-  private doMeleeAttack() {
-    if (this.meleeCooldown > 0) return;
-    this.meleeCooldown = this.weapon.cooldown || MELEE_COOLDOWN;
-
-    const range = this.weapon.range || MELEE_RANGE;
-    const knockback = this.weapon.knockback || 15;
-
-    // 找攻击范围内的怪物
-    for (const monster of this.monsters) {
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, monster.sprite.x, monster.sprite.y);
-      if (dist > range) continue;
-
-      // 检查角度（朝鼠标方向）
-      const angleToMonster = Math.atan2(monster.sprite.y - this.player.y, monster.sprite.x - this.player.x);
-      let angleDiff = Math.abs(angleToMonster - this.aimAngle);
-      if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-      if (angleDiff > Math.PI / 3) continue; // 60度锥形
-
-      // 命中！
-      monster.hp -= this.weapon.damage;
-      monster.stunTimer = 500;
-      monster.isChasing = true;
-      monster.giveUpTimer = monster.giveUpDuration;
-
-      // 击退
-      const dx = monster.sprite.x - this.player.x;
-      const dy = monster.sprite.y - this.player.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len > 0) {
-        monster.sprite.x += (dx / len) * knockback;
-        monster.sprite.y += (dy / len) * knockback;
-      }
-
-      this.cam.shake(100, 0.004);
-
-      if (monster.hp <= 0) {
-        this.killMonster(monster);
-      }
-
-      break; // 只打一只
+  // ── 放置陷阱（空格键）──
+  private placeTrap() {
+    // 找第一个未放置的陷阱
+    const trap = this.traps.find(t => !t.placed);
+    if (!trap) {
+      this.showMessage('没有可放置的陷阱！\n数字键先搓陷阱', 1500);
+      return;
     }
 
-    // 消耗耐久
-    this.weapon.durability--;
-    if (this.weapon.durability <= 0) {
-      this.showMessage(`💔 ${this.weapon.weaponName}碎了！`, 2000);
-      this.weapon = { mode: 'none', stoneType: 'trash', weaponName: '', durability: 0, maxDurability: 0, damage: 0, range: 0, cooldown: 0, knockback: 0, projectileSpeed: 0, projectileCount: 1, spread: 0 };
+    // 不能放在障碍物里
+    if (this.collidesWithObstacle(this.player.x, this.player.y, 12)) {
+      this.showMessage('不能在墙里放陷阱！', 1500);
+      return;
+    }
+
+    trap.x = this.player.x;
+    trap.y = this.player.y;
+    trap.angle = this.aimAngle;
+    trap.placed = true;
+
+    // 陷阱本体
+    const sprite = this.add.circle(trap.x, trap.y, 10, 0xff44ff, 0.8);
+    sprite.setDepth(4);
+    sprite.setStrokeStyle(2, 0xffffff);
+    trap.sprite = sprite;
+
+    // 范围预览（半透明）
+    const rangeSprite = this.add.graphics();
+    rangeSprite.setDepth(3.5);
+    this.drawTrapRange(rangeSprite, trap, 0x884488, 0.15);
+    trap.rangeSprite = rangeSprite;
+
+    const shapeIcon = this.getShapeIcon(trap.recipe.shape);
+    this.showMessage(`${shapeIcon} ${trap.recipe.name} 已放置！\n怪物进入范围时触发`, 1500);
+  }
+
+  // ── 绘制陷阱攻击范围 ──
+  private drawTrapRange(g: Phaser.GameObjects.Graphics, trap: PlacedTrap, color: number, alpha: number) {
+    g.clear();
+    const r = trap.recipe.range;
+
+    g.fillStyle(color, alpha);
+    g.lineStyle(2, color, alpha + 0.2);
+
+    switch (trap.recipe.shape) {
+      case 'circle': {
+        g.fillCircle(trap.x, trap.y, r);
+        g.strokeCircle(trap.x, trap.y, r);
+        break;
+      }
+      case 'cross': {
+        // 十字形：4个方向的长条
+        const armW = 24;
+        g.fillRect(trap.x - armW / 2, trap.y - r, armW, r * 2);
+        g.fillRect(trap.x - r, trap.y - armW / 2, r * 2, armW);
+        g.strokeRect(trap.x - armW / 2, trap.y - r, armW, r * 2);
+        g.strokeRect(trap.x - r, trap.y - armW / 2, r * 2, armW);
+        break;
+      }
+      case 'cone': {
+        // 锥形：朝陷阱朝向方向
+        const halfAngle = Math.PI / 4; // 90度锥
+        g.beginPath();
+        g.moveTo(trap.x, trap.y);
+        g.lineTo(
+          trap.x + Math.cos(trap.angle - halfAngle) * r,
+          trap.y + Math.sin(trap.angle - halfAngle) * r
+        );
+        g.lineTo(
+          trap.x + Math.cos(trap.angle + halfAngle) * r,
+          trap.y + Math.sin(trap.angle + halfAngle) * r
+        );
+        g.closePath();
+        g.fillPath();
+        g.strokePath();
+        break;
+      }
+      case 'line': {
+        // 直线：朝陷阱朝向方向的窄长条
+        const halfW = 16;
+        const perpX = -Math.sin(trap.angle);
+        const perpY = Math.cos(trap.angle);
+        g.beginPath();
+        g.moveTo(
+          trap.x + perpX * halfW,
+          trap.y + perpY * halfW
+        );
+        g.lineTo(
+          trap.x - perpX * halfW,
+          trap.y - perpY * halfW
+        );
+        g.lineTo(
+          trap.x - perpX * halfW + Math.cos(trap.angle) * r,
+          trap.y - perpY * halfW + Math.sin(trap.angle) * r
+        );
+        g.lineTo(
+          trap.x + perpX * halfW + Math.cos(trap.angle) * r,
+          trap.y + perpY * halfW + Math.sin(trap.angle) * r
+        );
+        g.closePath();
+        g.fillPath();
+        g.strokePath();
+        break;
+      }
+      case 'square': {
+        // 方形：以陷阱为中心的正方形
+        const half = r;
+        g.fillRect(trap.x - half, trap.y - half, half * 2, half * 2);
+        g.strokeRect(trap.x - half, trap.y - half, half * 2, half * 2);
+        break;
+      }
+      case 'ring': {
+        // 环形：外圈命中，内圈安全
+        g.beginPath();
+        g.arc(trap.x, trap.y, r, 0, Math.PI * 2);
+        g.fillPath();
+        // 挖空内圈（用不同颜色模拟）
+        g.fillStyle(0x1a1a2e, 0.9);
+        g.fillCircle(trap.x, trap.y, r * 0.4);
+        g.lineStyle(2, color, alpha + 0.3);
+        g.strokeCircle(trap.x, trap.y, r);
+        g.strokeCircle(trap.x, trap.y, r * 0.4);
+        break;
+      }
     }
   }
 
-  // ── 远程攻击 ──
-  private doRangedAttack() {
-    if (this.rangedCooldown > 0) return;
-    this.rangedCooldown = this.weapon.cooldown || RANGED_COOLDOWN;
-
-    const tier = STONE_TIERS.find(t => t.type === this.weapon.stoneType)!;
-    const speed = this.weapon.projectileSpeed || RANGED_PROJECTILE_SPEED;
-    const count = this.weapon.projectileCount || 1;
-    const spread = this.weapon.spread || 0;
-
-    for (let i = 0; i < count; i++) {
-      // 散弹角度分配
-      let angle = this.aimAngle;
-      if (count > 1) {
-        angle = this.aimAngle - spread / 2 + (spread * i) / (count - 1);
+  // ── 更新陷阱（检测怪物进入范围 → 触发）──
+  private updateTraps(delta: number) {
+    for (const trap of this.traps) {
+      if (!trap.placed) continue;
+      if (trap.charges <= 0) continue;
+      if (trap.cooldown > 0) {
+        trap.cooldown -= delta;
+        continue;
       }
 
-      const projSprite = this.add.circle(this.player.x, this.player.y, 6, tier.glowColor);
-      projSprite.setDepth(6);
-      projSprite.setStrokeStyle(1, 0xffffff);
+      // 检测怪物是否在攻击范围内
+      for (const monster of this.monsters) {
+        if (this.isMonsterInTrapRange(trap, monster)) {
+          this.triggerTrap(trap, monster);
+          break; // 一次只触发一个
+        }
+      }
+    }
 
-      this.projectiles.push({
-        sprite: projSprite,
-        damage: this.weapon.damage,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
+    // 清理已耗尽的陷阱
+    for (let i = this.traps.length - 1; i >= 0; i--) {
+      const trap = this.traps[i];
+      if (trap.placed && trap.charges <= 0) {
+        if (trap.sprite) trap.sprite.destroy();
+        if (trap.rangeSprite) trap.rangeSprite.destroy();
+        this.traps.splice(i, 1);
+      }
+    }
+  }
+
+  // ── 判断怪物是否在陷阱攻击范围内 ──
+  private isMonsterInTrapRange(trap: PlacedTrap, monster: Monster): boolean {
+    const mx = monster.sprite.x;
+    const my = monster.sprite.y;
+    const r = trap.recipe.range;
+
+    switch (trap.recipe.shape) {
+      case 'circle': {
+        return Phaser.Math.Distance.Between(trap.x, trap.y, mx, my) < r;
+      }
+      case 'cross': {
+        // 十字形：4个方向的长条
+        const armW = 12; // 命中宽度（比显示窄）
+        const dx = Math.abs(mx - trap.x);
+        const dy = Math.abs(my - trap.y);
+        // 垂直臂
+        if (dx < armW && dy < r) return true;
+        // 水平臂
+        if (dy < armW && dx < r) return true;
+        return false;
+      }
+      case 'cone': {
+        const dist = Phaser.Math.Distance.Between(trap.x, trap.y, mx, my);
+        if (dist > r) return false;
+        const angleToMonster = Math.atan2(my - trap.y, mx - trap.x);
+        let angleDiff = Math.abs(angleToMonster - trap.angle);
+        if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+        return angleDiff < Math.PI / 4; // 90度锥
+      }
+      case 'line': {
+        // 直线：朝向方向的窄长条
+        const dist = Phaser.Math.Distance.Between(trap.x, trap.y, mx, my);
+        if (dist > r) return false;
+        const angleToMonster = Math.atan2(my - trap.y, mx - trap.x);
+        let angleDiff = Math.abs(angleToMonster - trap.angle);
+        if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+        // 窄角度
+        return angleDiff < Math.PI / 16; // ~11度
+      }
+      case 'square': {
+        const half = r;
+        return mx > trap.x - half && mx < trap.x + half &&
+               my > trap.y - half && my < trap.y + half;
+      }
+      case 'ring': {
+        const dist = Phaser.Math.Distance.Between(trap.x, trap.y, mx, my);
+        return dist < r && dist > r * 0.4;
+      }
+    }
+  }
+
+  // ── 触发陷阱 ──
+  private triggerTrap(trap: PlacedTrap, monster: Monster) {
+    monster.hp -= trap.recipe.damage;
+    monster.stunTimer = trap.recipe.stunDuration;
+    monster.isChasing = true;
+    monster.giveUpTimer = monster.giveUpDuration;
+
+    trap.charges--;
+    trap.cooldown = trap.recipe.cooldown;
+
+    // 视觉效果
+    this.cam.shake(100, 0.004);
+    this.cam.flash(80, 255, 100, 255);
+
+    // 闪烁陷阱范围
+    if (trap.rangeSprite) {
+      this.drawTrapRange(trap.rangeSprite, trap, 0xffff00, 0.5);
+      this.time.delayedCall(200, () => {
+        if (trap.rangeSprite && trap.charges > 0) {
+          this.drawTrapRange(trap.rangeSprite, trap, 0x884488, 0.15);
+        }
       });
     }
 
-    // 消耗弹药
-    this.weapon.durability--;
-    if (this.weapon.durability <= 0) {
-      this.showMessage(`💔 ${this.weapon.weaponName}弹药耗尽！`, 2000);
-      this.weapon = { mode: 'none', stoneType: 'trash', weaponName: '', durability: 0, maxDurability: 0, damage: 0, range: 0, cooldown: 0, knockback: 0, projectileSpeed: 0, projectileCount: 1, spread: 0 };
+    const shapeIcon = this.getShapeIcon(trap.recipe.shape);
+    this.showMessage(`${shapeIcon} ${trap.recipe.name} 触发！\n-${trap.recipe.damage}伤 眩晕${(trap.recipe.stunDuration / 1000).toFixed(1)}s\n剩余${trap.charges}次`, 1200);
+
+    if (monster.hp <= 0) {
+      this.killMonster(monster);
     }
   }
 
-  // ── 更新弹幕 ──
-  private updateProjectiles(delta: number) {
-    const dt = delta / 1000;
-    const toRemove: number[] = [];
+  // ── 陷阱放置预览（跟随玩家）──
+  private drawTrapPreview() {
+    this.trapPreviewGraphics.clear();
 
-    for (let i = 0; i < this.projectiles.length; i++) {
-      const proj = this.projectiles[i];
-      proj.sprite.x += proj.vx * dt;
-      proj.sprite.y += proj.vy * dt;
+    const unplaced = this.traps.find(t => !t.placed);
+    if (!unplaced) return;
 
-      // 撞墙
-      if (this.collidesWithObstacle(proj.sprite.x, proj.sprite.y, 6)) {
-        toRemove.push(i);
-        continue;
-      }
-
-      // 超出地图
-      if (proj.sprite.x < 0 || proj.sprite.x > this.mapWidth || proj.sprite.y < 0 || proj.sprite.y > this.mapHeight) {
-        toRemove.push(i);
-        continue;
-      }
-
-      // 命中怪物
-      let hit = false;
-      for (const monster of this.monsters) {
-        const dist = Phaser.Math.Distance.Between(proj.sprite.x, proj.sprite.y, monster.sprite.x, monster.sprite.y);
-        if (dist < 18) {
-          monster.hp -= proj.damage;
-          monster.isChasing = true;
-          monster.giveUpTimer = monster.giveUpDuration;
-          hit = true;
-
-          if (monster.hp <= 0) {
-            this.killMonster(monster);
-          }
-          break;
-        }
-      }
-
-      if (hit) toRemove.push(i);
-    }
-
-    // 移除
-    for (let i = toRemove.length - 1; i >= 0; i--) {
-      this.projectiles[toRemove[i]].sprite.destroy();
-      this.projectiles.splice(toRemove[i], 1);
-    }
-  }
-
-  // ── 武器视觉 ──
-  private drawWeaponVisual() {
-    this.weaponGraphics.clear();
-
-    if (this.weapon.mode === 'none') return;
-
-    const tier = STONE_TIERS.find(t => t.type === this.weapon.stoneType)!;
-
-    if (this.weapon.mode === 'melee') {
-      // 近战：画一条短线表示武器
-      const len = (this.weapon.range || MELEE_RANGE) * 0.6;
-      const swingAngle = this.aimAngle;
-      this.weaponGraphics.lineStyle(3, tier.glowColor, 0.8);
-      this.weaponGraphics.beginPath();
-      this.weaponGraphics.moveTo(this.player.x, this.player.y);
-      this.weaponGraphics.lineTo(
-        this.player.x + Math.cos(swingAngle) * len,
-        this.player.y + Math.sin(swingAngle) * len
-      );
-      this.weaponGraphics.strokePath();
-    } else if (this.weapon.mode === 'ranged') {
-      // 远程：画一个瞄准线
-      this.weaponGraphics.lineStyle(1, tier.glowColor, 0.3);
-      this.weaponGraphics.beginPath();
-      this.weaponGraphics.moveTo(this.player.x, this.player.y);
-      this.weaponGraphics.lineTo(
-        this.player.x + Math.cos(this.aimAngle) * (this.weapon.range || RANGED_RANGE),
-        this.player.y + Math.sin(this.aimAngle) * (this.weapon.range || RANGED_RANGE)
-      );
-      this.weaponGraphics.strokePath();
-    }
+    // 在玩家位置预览范围
+    const previewTrap: PlacedTrap = {
+      recipe: unplaced.recipe,
+      x: this.player.x,
+      y: this.player.y,
+      angle: this.aimAngle,
+      charges: unplaced.charges,
+      cooldown: 0,
+      placed: false,
+      sprite: null,
+      rangeSprite: null,
+    };
+    this.drawTrapRange(this.trapPreviewGraphics, previewTrap, 0x44ff44, 0.1);
   }
 
   // ── 击杀怪物 ──
@@ -1838,11 +1865,9 @@ export class RuneGambleScene extends Phaser.Scene {
       sprite: coreSprite,
     });
 
-    // 死亡效果
     this.cam.flash(100, 255, 255, 255);
     this.cam.shake(150, 0.005);
 
-    // 移除怪物
     monster.sprite.destroy();
     const idx = this.monsters.indexOf(monster);
     if (idx >= 0) this.monsters.splice(idx, 1);
@@ -2037,4 +2062,18 @@ export class RuneGambleScene extends Phaser.Scene {
     this.isWon = true;
     this.showMessage(`🎉 成功撤离！\n\n灵核×${this.coreCount}  石头估值\n总价值: ${this.getEstimatedScore()}\n\n按ESC返回菜单`, 999999);
   }
+}
+
+// ─── Placed trap ─────────────────────────────────────────────
+
+interface PlacedTrap {
+  recipe: TrapRecipe;
+  x: number;
+  y: number;
+  angle: number;
+  charges: number;
+  cooldown: number;
+  placed: boolean;
+  sprite: Phaser.GameObjects.Arc | null;
+  rangeSprite: Phaser.GameObjects.Graphics | null;
 }
