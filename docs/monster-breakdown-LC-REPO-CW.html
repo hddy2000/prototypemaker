@@ -1,0 +1,4752 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>致命公司 / R.E.P.O. / Content Warning — 全怪物拆解</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --card-bg: #161b22;
+  --card-border: #30363d;
+  --text: #c9d1d9;
+  --text-bright: #f0f6fc;
+  --accent: #58a6ff;
+  --accent-dim: #1f6feb;
+  --green: #3fb950;
+  --red: #f85149;
+  --orange: #d29922;
+  --purple: #bc8cff;
+  --table-header: #1f2937;
+  --table-row-alt: #1c2128;
+  --lc-color: #f85149;
+  --repo-color: #58a6ff;
+  --cw-color: #3fb950;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  padding: 0;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  padding: 48px 40px 36px;
+  border-bottom: 3px solid var(--accent);
+  position: relative;
+  overflow: hidden;
+}
+.header::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(88,166,255,0.08) 0%, transparent 50%),
+              radial-gradient(circle at 80% 50%, rgba(248,81,73,0.06) 0%, transparent 50%);
+}
+.header h1 {
+  color: var(--text-bright);
+  font-size: 2.2em;
+  margin-bottom: 12px;
+  position: relative;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+.header .subtitle {
+  color: var(--accent);
+  font-size: 1.05em;
+  position: relative;
+}
+.header .stats {
+  display: flex;
+  gap: 16px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+  position: relative;
+}
+.header .stat-badge {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.9em;
+}
+.header .stat-badge .num {
+  font-weight: 700;
+  font-size: 1.3em;
+}
+.header .stat-badge.lc .num { color: var(--lc-color); }
+.header .stat-badge.repo .num { color: var(--repo-color); }
+.header .stat-badge.cw .num { color: var(--cw-color); }
+.header .stat-badge.total .num { color: var(--purple); }
+
+/* Content wrapper */
+.content {
+  padding: 32px 40px 60px;
+}
+
+/* Table of contents */
+.toc {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 24px 28px;
+  margin-bottom: 32px;
+}
+.toc .toc-title {
+  font-size: 1.2em;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toc ul { list-style: none; }
+.toc li { margin: 6px 0; }
+.toc a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 1em;
+  transition: color 0.2s;
+}
+.toc a:hover { color: var(--purple); text-decoration: underline; }
+
+/* Headings */
+h2 {
+  color: var(--text-bright);
+  font-size: 1.8em;
+  margin: 48px 0 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--card-border);
+  position: relative;
+}
+h2::before {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 80px;
+  height: 2px;
+  background: var(--accent);
+}
+
+h3 {
+  color: var(--accent);
+  font-size: 1.35em;
+  margin: 36px 0 16px;
+  padding: 8px 0 8px 16px;
+  border-left: 4px solid var(--accent-dim);
+  background: linear-gradient(90deg, rgba(31,111,235,0.08) 0%, transparent 100%);
+}
+
+h4 {
+  color: var(--purple);
+  font-size: 1.1em;
+  margin: 24px 0 12px;
+}
+
+/* Section dividers for game sections */
+h2.game-section {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  border-bottom: none;
+}
+h2.game-section::before { display: none; }
+
+/* Blockquotes */
+blockquote {
+  border-left: 4px solid var(--accent-dim);
+  background: rgba(31,111,235,0.06);
+  padding: 12px 20px;
+  margin: 16px 0;
+  border-radius: 0 8px 8px 0;
+  color: var(--text);
+}
+blockquote p { margin: 4px 0; }
+
+/* Horizontal rules */
+hr {
+  border: none;
+  border-top: 1px solid var(--card-border);
+  margin: 32px 0;
+}
+
+/* Paragraphs */
+p { margin: 10px 0; }
+
+/* Strong / bold */
+strong { color: var(--text-bright); }
+
+/* Monster entry wrapper - each <hr> separated block */
+.content > hr + h3 {
+  margin-top: 40px;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0 24px;
+  font-size: 0.92em;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+thead {
+  background: var(--table-header);
+}
+thead th {
+  color: var(--text-bright);
+  font-weight: 700;
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 2px solid var(--accent-dim);
+  font-size: 0.95em;
+}
+tbody td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--card-border);
+  vertical-align: top;
+}
+tbody tr:nth-child(even) {
+  background: var(--table-row-alt);
+}
+tbody tr:hover {
+  background: rgba(88,166,255,0.06);
+}
+tbody td:first-child {
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  width: 120px;
+  min-width: 100px;
+}
+
+/* Code */
+code {
+  background: rgba(110,118,129,0.25);
+  color: var(--orange);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 16px 0;
+}
+pre code {
+  background: none;
+  color: var(--text);
+  padding: 0;
+}
+
+/* Links */
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+a:hover { color: var(--purple); text-decoration: underline; }
+
+/* List items */
+ul, ol {
+  margin: 8px 0 16px;
+  padding-left: 28px;
+}
+li { margin: 4px 0; }
+
+/* Anchor offset for sticky nav */
+h2[id], h3[id] {
+  scroll-margin-top: 20px;
+}
+
+/* Footer */
+.footer {
+  text-align: center;
+  padding: 24px;
+  color: var(--text);
+  font-size: 0.85em;
+  border-top: 1px solid var(--card-border);
+  margin-top: 40px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header { padding: 32px 20px 24px; }
+  .header h1 { font-size: 1.5em; }
+  .content { padding: 20px 16px 40px; }
+  table { font-size: 0.82em; }
+  thead th, tbody td { padding: 8px 10px; }
+  tbody td:first-child { width: auto; white-space: normal; }
+  h2 { font-size: 1.4em; }
+  h3 { font-size: 1.15em; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎮 致命公司 / R.E.P.O. / Content Warning — 全怪物拆解</h1>
+  <div class="subtitle">三款恐怖合作游戏的每一只怪的机动性、攻击方式、仇恨机制、感官机制拆解 · 用于原型开发 AI 设计参考</div>
+  <div class="stats">
+    <div class="stat-badge lc"><span class="num">32</span> Lethal Company</div>
+    <div class="stat-badge repo"><span class="num">29</span> R.E.P.O.</div>
+    <div class="stat-badge cw"><span class="num">32</span> Content Warning</div>
+    <div class="stat-badge total"><span class="num">93</span> 总计怪物</div>
+  </div>
+</div>
+
+<div class="content">
+<h1 id="repo-content-warning">致命公司 / R.E.P.O. / Content Warning — 全怪物拆解</h1>
+<blockquote>
+<p>三款恐怖合作游戏的<strong>每一只怪</strong>的机动性、攻击方式、仇恨机制、感官机制拆解。<br />
+用于原型开发的 AI 设计参考。</p>
+</blockquote>
+<hr />
+<h2 id="_1">目录</h2>
+<ul>
+<li><a href="#一lethal-company致命公司32-只实体">一、Lethal Company（致命公司）— 32 只实体</a></li>
+<li><a href="#二repo--29-只敌人">二、R.E.P.O. — 29 只敌人</a></li>
+<li><a href="#三content-warning--32-只怪物">三、Content Warning — 32 只怪物</a></li>
+<li><a href="#四三款游戏横向对比总结">四、三款游戏横向对比总结</a></li>
+</ul>
+<hr />
+<h2 id="lethal-company-32">一、Lethal Company（致命公司）— 32 只实体</h2>
+<blockquote>
+<p>HP 以"铲子击数"为单位（1 铲子 = 1 HP）。分为室内 / 室外夜间 / 白天三类。</p>
+</blockquote>
+<h3 id="19">室内实体（19 只）</h3>
+<hr />
+<h3 id="1-bracken-flowerman">1. Bracken / Flowerman（花人 / 蕨人）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>中快。<strong>不随机漫游</strong>——始终最优路径绕到玩家<strong>背后</strong>，从不在正面出现。可跨楼层躲藏。被发现时<strong>倒退高速撤退</strong>。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>接触即秒杀</strong>——扭脖子，然后把尸体拖到它的"专属房间"。无前摇。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>全知</strong>——始终知道设施内所有玩家的位置和朝向。追最近的玩家。受伤后进入暴怒态，追最近的玩家（不分谁打的）。<strong>不呼叫同伴</strong>。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>室内全知（知道所有人位置/朝向）。<strong>凝视机制</strong>：被瞥见→撤退；被长时间盯着→<strong>愤怒值</strong>累积（0.2 秒怒/0.2 秒被盯），满后暴怒。黑暗中可见发光白眼。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 5 HP。但受伤瞬间进入暴怒态。双管猎枪最佳（1 HP/发）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>撤退态持续 24 秒（仅在不被看时倒计时）。每日最多刷 1 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好月亮：Vow（21%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>三阶段：狩猎→撤退→暴怒。愤怒值不自然衰减。拖尸是标志性行为。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="2-coil-head">2. Coil-Head（弹簧头 / 线圈头）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>中（约等于玩家冲刺速度）。在两个随机区域间漫游；建立视线后追设施内所有玩家。<strong>只在不被看时移动/攻击</strong>。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>90 伤害/次，0.2 秒攻速（450 DPS）——实际秒杀。斩首，脖子换成弹簧。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>一旦有玩家在视线内，追<strong>设施内所有玩家</strong>（不分视线）。目标死了/离开则切换。无玩家时回巡逻。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>视觉（凝视机制）</strong>。视野从脚部发出，玩家必须看其<strong>骨盆/腰部</strong>才能冻结它。巡逻态看头有效，追击态看腰有效。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无敌。只能眩晕（眩晕倍率 3.25x，全游戏最长）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>追 35 秒后进入休息/充能态约 15 秒（头缩下休眠）。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Offense（11%）。最多 5 只。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>Weeping Angel / SCP-173 机制。关门极慢（0.06），关门可逃生。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="3-nutcracker">3. Nutcracker（胡桃夹子）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>中。巡逻走廊，定期停步 360° 扫描。巡逻时无敌，<strong>只有眼睛伸出时可受伤</strong>。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>两种：<strong>霰弹枪射击</strong>（5–100 伤害按距离，约 1 秒前摇，1.5 秒装弹）+ <strong>踢击</strong>（接触秒杀，但只在非射击/装弹时）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>70° 视野扫描<strong>移动</strong>，每 30° 停一次。检测到移动→锁定该玩家。会蹲守停止移动的玩家（等他动再射）。v47 起可微移瞄准。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>运动视觉</strong>——头抬起时伸出的单眼检测。摄像机移动、蹲下、表情都算移动。未被检测的玩家可自由攻击它。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 5 HP，但只有眼睛伸出时。最后一击触发暴怒（射速加快）。掉落双管猎枪 + 2 发子弹。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>失去目标后回巡逻。最多 10 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Rend（23%）。有"虫害"事件（0.725%/天）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>唯一有致命远程攻击的怪 + 两种攻击。掉落可用武器。霰弹可杀其他实体。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="4-jester">4. Jester（小丑 / 音乐盒）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢漫游→跟随玩家→<strong>上发条</strong>（静止 42 秒）→<strong>追击</strong>（速度递增，最终超过冲刺）。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>追击态<strong>接触秒杀</strong>。用嘴咬住尸体片刻后丢下追下一个。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>全知</strong>——不靠声/光/移动，一旦锁定跟随就无法甩掉，<strong>只能离开设施</strong>。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>无感官检测——锁定后全知。跟随阶段持续 13–18 秒（多人）/ 25–42 秒（单人）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无敌。只能拖延（电击枪最多拖延上发条 20 秒）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>设施内无活玩家时回漫游。速度在击杀/眩晕/闪光后重置。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Rend（14%）。最多 1 只。Power 3。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>三阶段：漫游→上发条（播放"Pop Goes the Weasel"，越来越快/疯狂）→追击。尖叫会引来无眼犬。最佳对策：离开设施。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="5-ghost-girl-dress-girl">5. Ghost Girl / Dress Girl（幽灵女孩 / 裙子女孩）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>传送/跳跃式接近目标。可出现在室内或室外。<strong>对目标以外的玩家隐形</strong>。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>追击态<strong>接触秒杀</strong>（斩首）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>一次只附身一人</strong>——积分系统：基础 80 + 最高理智值(+50) + 最偏执/转头最多(+30) + 持有&gt;150c 废品(+30) + 从未重伤(+10)。目标死后选新目标。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>视线"捉迷藏"机制</strong>。五状态：缺席→凝视→消失→隐匿→追击。看她累积"被盯次数"；3–4 次被看或 3 次未看→85% 概率追击。5 单位内算"在看"。追击时不被看可传送。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无敌且免疫所有眩晕。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>追击持续 20 秒或目标移动&gt;50 单位，回缺席。可从不看她、保持&gt;50 单位、或蹲在飞船柜子上（安全点）规避。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内（但跟随目标到任何地方，含室外/飞船）。偏好：Rend（4.68%）。最多 1 只。无图鉴条目。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>唯一只对一个玩家可见的实体。征兆：灯闪、咯咯笑/呼吸、闷声音频、落地钟声。淋浴可阻断视线阻止生成。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="6-thumper-crawler">6. Thumper / Crawler（重击者 / 爬行者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>直线极快</strong>（加速到玩家跑不过），但<strong>拐弯极差</strong>。聋。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>40 伤害/咬，4 咬致死。发现目标时咆哮。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>纯视觉检测。断视线后调查最后看到的位置。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>纯视觉——完全聋</strong>。听不到任何声音。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 4 HP。切换目标/被击中/攻击/撞墙/被眩晕时失去所有速度。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>调查最后已知位置；失去目标后回漫游。最多 4 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Offense（22%）。Power 3。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>软骨骨架（鲨鱼/鳐鱼状）。头部受击免疫菜刀。最佳对策：拐弯断视线、倒退+敲。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="7-hygrodere-blob-slime">7. Hygrodere / Blob / Slime（史莱姆 / 黏液怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>极慢</strong>。知道设施内所有玩家位置，追最近的。可开门（少见）。玩家拿收音机时大幅加速。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>35 接触伤害（DoT，在里面持续掉血）。击杀后完全吸收身体（只剩空衣服）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>始终知道所有玩家位置。无玩家时移向最后已知位置。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>全知定位（非视觉/听觉）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 免疫所有武器（尖刺陷阱除外，有 bug）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>不算放弃，但极慢。v80 起无玩家时用标准寻路（不再蹲出口）。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Offense（14%）。最多 2 只。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>可变大小（激动时变大）。收音机驯化机制（在静止收音机上跳舞时无害）。游戏内最不危险的敌怪。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="8-hoarding-bug-loot-bug">8. Hoarding Bug / Loot Bug（囤积虫 / 拾荒虫）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>中。漫游搜废品，回巢。激动时可飞。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>30 伤害。三档仇恨：轻（接近，追几秒）、中（被击，断视线 15 秒后放弃）、最高（巢被偷，追到死/死/归还物品）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>接近巢穴/被击/巢被偷触发。巢被偷即使虫没看到也触发。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>听觉</strong>（蹲走/走路/冲刺/语音/手电开关声）近巢触发守卫。视觉发现/追踪玩家。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 3 HP。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>轻：几秒。中：断视线 15 秒。最高：只有击杀/死亡/归还<strong>同一件</strong>被偷废品。最多 10 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Embrion（27%）。有"虫害"事件（2.9%/天）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>收集/囤积废品到巢。丢物品可安抚。会跟着拿废品的玩家。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="9-bunker-spider">9. Bunker Spider（地堡蜘蛛）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢。漫游织网；网被触碰/破坏或蜘蛛被碰时追。快死时加速。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>90 伤害（两下致死）。拖尸体到巢用丝包裹（无传送器则不可取回）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>领地型——网接触/近战破网/碰蜘蛛触发。织很多网后可能进入伪狩猎模式。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>网触发（接近/接触）。狩猎后视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 5 HP。不能跨断层房间。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>持续追但慢；走路速度就能甩掉。最多 1 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Experimentation（25%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>蜘蛛恐惧症模式替换为漂浮"Spider"文字。网减速玩家。开门极慢（0.15）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="10-snare-flea-centipede">10. Snare Flea / Centipede（陷阱蚤 / 蜈蚣）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>挂天花板，玩家走到下方/附近时掉落。可开门。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>10 伤害/0.5 秒（5 DPS）——窒息 DoT。闷住受害者语音。只在：被击/目标离开设施(死)/目标死/(单人)目标到残血时松手。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>玩家走到下方/附近时掉落。目标死后重新挂回天花板。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近触发（天花板伏击）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 3 HP。目标离开设施或被传送到飞船时瞬间死。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>附着时不放弃；击杀后挂回天花板。最多 4 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Assurance（26%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>Headcrab/Facehugger 机制。摇头甩不掉。附着时屏幕右上角有小洞。队友可用铲子/电击枪杀。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="11-spore-lizard-puffer">11. Spore Lizard / Puffer（孢子蜥蜴 / 河豚）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢。<strong>从玩家面前逃跑/躲藏</strong>。唯一怕玩家的怪。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>20 接触伤害（咬）。被逼到角落时释放粉色孢子云（阻碍视野，无伤害）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>只在被逼到角落/被追/被威胁时攻击。主要是虚张声势。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉；看到就撤退。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无敌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>退入阴影；不离开。最多 2 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Embrion（11%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>唯一怕玩家的实体。响尾蛇般尾巴声。功能上是 jump-scare/障碍，非真正威胁。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="12-butler">12. Butler（管家）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>漫游扫地。6 秒没看到玩家时跑。谋杀阶段冲刺。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>10 伤害（菜刀快速刺）。死亡时爆炸 30 伤害+击退。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>多人在场时被动。<strong>针对落单玩家</strong>（独处 6 秒→徘徊态；12 秒不见他人→谋杀态）。切最近目标。被以下触发暴怒：非菜刀近战击中、被看到和尸体在一起、长时间接触（14%/0.25 秒）。多管家连锁暴怒。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（可穿门看）。追最近玩家。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 8 HP（多人）/ 2 HP（单人）。菜刀 1 击致死。死亡掉落菜刀+生成面具胡蜂。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>杀人后逃跑 15 秒，回漫游。最多 7 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Dine（16%）。v80 起不在 Adamance。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>四阶段：漫游→徘徊→谋杀→暴怒。死亡生成面具胡蜂+爆炸。免疫震撼弹。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="13-maneater">13. Maneater（食人兽 / 洞穴居者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>幼体：跟随/漫游。成体：守巢，<strong>潜行绕到玩家背后</strong>（视线外偷袭），<strong>突进极快</strong>（无视地形）。<strong>室外突进速度 2 倍</strong>。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>成体<strong>接触秒杀</strong>（撕咬）。攻击循环：0.5–1 秒冲刺 + 1.5–2 秒停顿。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>幼体对第一个看到的玩家印随（100%好感，后续 50%）。成体：攻击最后看到的玩家；领地内感知玩家位置（30–100 单位范围）。看着成体但不靠近→撤退+绕圈伏击。假幼体哭声诱骗玩家。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>幼体：听觉（声音触发哭泣）。成体：视觉+领地接近感知。领地内无视视线感知玩家。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>幼体：<strong>无敌</strong>（秒杀伤害反而触发变形）。成体：<strong>5 HP</strong>，但所有非秒杀伤害每击上限 1 HP。免疫震撼弹。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>所有玩家&gt;14 单位且不可见，或所有玩家离开领地时退出攻击态。最多 1 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内（可被玩家带到室外）。矿道内刷新率 1.7 倍。偏好：Vow（14%/24%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>幼体→成体变形（室内哭泣 17 秒，不可逆）。必须"摇"来安抚。幼体可拾取（双手，21 磅）。吃东西变胖（外观）。<strong>别把幼体带到室外</strong>（哭、无法安抚、变形更快、突进 2 倍速）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="14-masked-mimic">14. Masked / Mimic（面具人 / 模仿者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>走/冲刺。可快速爬梯。可离开设施（仅主入口，且设施内无活玩家时；室外无人时重新进入）。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>秒杀</strong>——抓住玩家，将其转化为面具人（非普通尸体）。转化需几秒（可击杀/眩晕/传送窗口）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>追第一个看到的玩家；忽略其他人，除非原目标断视线 10 秒或死亡。可在飞船藏身（22 米内，漫游态）。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（视线）。三档距离行为：&lt;6 米走+伸手、6–12 米走、&gt;17 米冲刺。计时器：停看(5–8 秒)、随机跑(0.7–5 秒，室内 20%/室外 35% 冲刺)、追丢(10 秒巡逻最后已知)。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 4 HP。每铲击眩晕约 0.5 秒。被击时 40% 概率冲刺（1 HP 时 100%）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>失去目标 10 秒后回漫游。最多 10 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内（可到室外）。偏好：Artifice（7%）。也可由玩家持戏剧面具过久生成。无图鉴条目。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>雷达上显示蓝点（像玩家）。模仿玩家行为（转身、偷看、旋转）。被转化玩家保留衣服。每转化一人 20% 死亡罚金。转化时物品删除。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="15-barber-clay-surgeon">15. Barber / Clay Surgeon（理发师 / 黏土外科医）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>按固定间隔向前跳（8am 时 2.75 秒，到 11pm 加速到 1.25 秒）。跟着节拍移动。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>秒杀</strong>——用超大剪刀把玩家切成两半（突袭命中）。前摇为小鼓滚奏。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>玩家完全看到它且在正前方时切换为跟随。突袭锁定蓄力时刻的玩家位置。约 6 次范围外突袭后回漫游。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉——你看不到它，它就看不到你。拉远距离失去兴趣。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无敌。剪刀玩家不可用。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>约 6 次失败突袭后回漫游。最多 1 只（v62，原为 8）。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Embrion（11%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>节奏移动（小鼓提示）。远处通常不可见（但近处所有玩家可见，不像幽灵女孩）。难开双开门。图鉴条目最短。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="16-cadaver-cadaver-growth">16. Cadaver / Cadaver Growth（尸体 / 尸体生长物）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>静态植物生长。积极蔓延。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>感染机制</strong>（DoT/变形）。站在孢子云中 7 秒(单人)/4 秒(多人)有感染风险。感染分阶段(0→100%)，满后<strong>爆裂</strong>→玩家死亡变尸体花。35% 感染时死亡触发爆裂。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>无（被动障碍）。感染概率基于：10 单位内植物数、距离、已感染玩家数、当前血量（满血×0.75，≤60 HP ×1.2，残血×1.5）。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>无（环境障碍）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无限 HP。除草剂可减缓/喷洒感染（每 0.33 秒喷除 10%，造成 8 伤害）。喷爆裂阶段玩家触发瞬间爆裂（死亡）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>当局永久。感染永久（离开时暂停，不重置）。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：Adamance（37.66%）。最多 1 只。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>"感染"机制含过滤质量%、发烧/温度 HUD(单人)、连锁爆裂（85%+感染 14 单位内同时爆裂）。淋浴可治愈早期感染(0–8%)，之后减缓。感染者说话时 76% 概率喷孢子。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="17-cadaver-bloom">17. Cadaver Bloom（尸体花）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢漫游(5 u/s)。目标远(&gt;18 单位)时高速冲锋。6–18 单位内 erratic 移动(7–18 u/s 随机)。3.6 单位内减速到 7 u/s。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>30 伤害（食人花咬）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>80 单位半径内漫游搜索。看到就追。失去目标时检测噪音（15 单位半径，转向声源 1.5 秒）。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉+有限听觉（仅失去目标时）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 4 HP（所有伤害每击上限 1 HP，同食人兽）。被击眩晕 0.75 秒。死亡掉落原玩家尸体。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>搜索最后已知位置 9 秒(18 单位半径)后回漫游。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内/室外（感染者死亡处变形）。非自然生成。最多 8 只。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>感染玩家死亡生成。飞船监视器上显示为玩家（可被传送，同面具人）。雾天扫描范围 18→8 单位。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="18-mask-hornets-butler-bees">18. Mask Hornets / Butler Bees（面具胡蜂）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>飞行。追击速度渐增至 6.8。单人更慢。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>10 伤害/0.5 秒（10 DPS）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>管家死亡时生成。攻击附近玩家。持续到飞船离开。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉/接近。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无敌。不能出设施。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>持续到飞船离开月亮。最多 7 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内（管家死亡生成）。非自然生成。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>仅管家死亡生成。可眩晕（0.6x 倍率，3 秒）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="19-backwater-gunkfish-stingray">19. Backwater Gunkfish / Stingray（底栖污鱼 / 魟鱼）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>隐形（静止）。高速突袭。逃跑时最高 11 速度留黏液轨迹。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>0 伤害</strong>——喷污（滑溜轨迹、遮挡面罩）。无害。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>玩家 5 单位内注视&gt;10 秒、1.5 单位内接触、或被击时突袭。突袭后逃跑。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（110° 视野，25 单位范围）。4 单位内玩家不被检测。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 5 HP。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>逃到 40+ 单位外藏身处；重新隐形。30 秒无 12 单位内玩家时回隐形。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室内。偏好：March（18%）。最多 6 只。无害实体。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>隐形时不可见。留滑溜黏液贴花。危险度 0%。害虫/障碍，非威胁。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="6">室外夜间实体（6 只）</h3>
+<hr />
+<h3 id="20-eyeless-dog">20. Eyeless Dog（无眼犬）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢巡逻。距最后听到声音 4 米时加速突袭（2.3–3.3 秒突袭）。不能跳/爬（但能爬 Titan 楼梯）。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>接触秒杀</strong>（对玩家）。对其他实体 3 伤害。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>声音驱动</strong>。怀疑值每噪音涨 3–4 秒。超阈值则追。追击时<strong>嚎叫通知附近犬</strong>（呼叫同伴）。突袭暂停怀疑计时。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>纯听觉——完全失明</strong>。检测：说话、非蹲走、丢物、手电开关、收音机、空投船、近战命中、噪音废品（气喇叭、收银机、小丑角、吹风机、放屁垫、机器人玩具、橡皮鸭、牙齿）。对讲机不触发（除非正在广播）。蹲走抑制噪音。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 12 HP（12 铲子）。闪电 1 击秒杀。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>怀疑值超时后回可疑→平静。最多 8 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（夜间/日食）。偏好：Titan（65%）。Power 2。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>盲猎手（SCP-939 启发）。生成时随机音调(0.9–1.1，或 2/10 概率 0.6–1.3)。击杀后音调重置 0.96–1.04（队友死亡信号）。可穿飞船家具。敌对狒狒鹰和旧鸟。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="21-forest-keeper-forest-giant">21. Forest Keeper / Forest Giant（森林守护者 / 森林巨人）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>快（冲刺，匹配玩家冲刺）。从地下升起需 9 秒（升起时脆弱）。不能进小空间。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>秒杀</strong>——抓住整个吞下。尸体不可取回；所有库存物品删除。死亡动画（后倒）可压死玩家（"重力"死亡）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>每玩家独立怀疑值</strong>(0→1)。随：被看到的时间、距离更近、站立(2x vs 蹲 1x)、移动(+1x)上升。满 1 时追。追一人时其他人怀疑值下降。单人时怀疑值不自然下降（最终必追）。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>纯视觉——完全失聪</strong>（v45+）。视野 50°，观看距离 70 米（雾中 30 米）。搜索精度 8 米，宽度 200 米。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅（v50+）38 HP。最佳：彩蛋爆炸(火)、喷气背包爆炸、旧鸟导弹、闪电（都着火→烧死，无视 HP）。双管需 8+ 发。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>断视线 3 秒→搜索 9 秒(15 米精度，25 米宽度)→回漫游。最多 3 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外。偏好：Dine（76%）。Power 3。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>完全吞噬尸体（不可取回）。怀疑值系统。只攻击玩家（不攻击其他实体）。可踩断 Vow/Adamance 的破桥。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="22-earth-leviathan-sandworm">22. Earth Leviathan / Sandworm（地底利维坦 / 沙虫）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>地下漫游。以猎物为中心定位，然后钻出。一旦钻出<strong>无法靠跑躲避</strong>——必须丢重物冲刺。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>秒杀</strong>——吞下黑色粒子标记区域内的一切。吞噬所有实体（含无敌的旧鸟、森林守护者），除幽灵女孩。地上废品不被吞；被吞玩家库存中的废品会。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>地下追踪猎物。轰隆声=追踪中；黑色粒子=即将钻出。蛇形跑可延长追踪时间。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>地下追踪（非视觉/听觉——接近/追踪）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无敌。游戏内最大生物。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>每次钻出只攻击一次；回地下。最多 3 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（夜间/日食）。偏好：Assurance（49%）。Power 2。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>可被骗去吃森林守护者。最小钻出时间 1 秒（v50，移除"瞬秒虫"）。不攻击飞船上玩家但攻击时可吞。可吃旧鸟（无论是否激活）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="23-baboon-hawk">23. Baboon Hawk（狒狒鹰）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>腿上跳。2 只一组生成（4+ 只时筑巢）。有首领+成员。可飞。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>20 伤害（v50，原 30）。对其他实体 2 伤害。击杀后用嘴刺穿尸体。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>复杂恐惧/威胁系统。视线检测进入战斗。先防御态（战斗计时）；战斗计时&gt;7 时转攻击态。只在恐惧低或舒适距离被破时攻击。<strong>玩家比它们多时不攻击</strong>。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>视觉(110° 视野)</strong> + <strong>听觉</strong>（检测≥0.75 单位外声音，闭眼减 25%）。专注等级 0–3 影响忽略什么。视线检测威胁(40 单位球)、废品(30 单位球)、其他鹰。可见度阈值影响检测范围。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 4 HP。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>5 秒不可见（或 3 秒+距离检测）后失去目标。回侦查/返回态。最多 15 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（白天）。偏好：Adamance（55%）。Power 0.5。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>鹰间通信系统。恐惧等级（有/无距离）。领导值(0–500)决定体型。偷丢地废品回巢。敌对无眼犬。"吹风机策略"（噪音物品增加威胁等级）。灵感来自 Rain World 清道夫/Miros 鸟。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="24-old-bird-radmech">24. Old Bird / RadMech（旧鸟 / 辐射机甲）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>鹅步行走+飞行（留黑烟轨迹）。预生成不活跃；被选为刷新周期时激活。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>四种攻击：<strong>导弹</strong>（弧形轨迹、击退、脚下直击秒杀）、<strong>踩踏</strong>（30 伤害，大 AoE）、<strong>压扁</strong>（70 伤害，从空中落到目标上）、<strong>抓取</strong>（160/秒杀——爪臂抓住，喷火烧死）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>激活→漫游→检测到追击。<strong>全游戏最大视野</strong>（球形，从脚踝发出——你看不到它脚踝，它就看不到你）。追玩家和大多数实体（不追食人兽、绑架狐、电路蜂、游荡蝗虫、面具人、其他旧鸟）。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（检测到目标时聚光灯亮起）。球形视野。附近时每步屏幕震动。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无限 HP。可用雷达增幅器 ping 连环眩晕（5 秒眩晕，2.5 秒冷却）。地底利维坦可吃它们。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>追到所有发现目标死亡或消失于视野一段时间。最多 20 只(Embrion)。Power 3。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外。偏好：Embrion（87%）。预生成不活跃。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>战争兵器（洗脑信号=人类惨叫声）。唯一 4 种攻击+远程+飞行的实体。可用终端雷达增幅器 ping 连环眩晕。v80 可骑头上。危险度 95%（高于小丑）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="25-feiopar-puma">25. Feiopar / Puma（飞豹 / 美洲狮）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>快（最高 15 u/s）。爬树。潜行绕到玩家背后。冲锋速度递增。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>7 伤害（抓）+ 小击退。身体变血迹/抓痕（外观）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>状态 0(树上漫游/待机)→状态 1(跟踪/受惊/冻结/躲藏)→状态 2(攻击)。玩家 4.5 单位内直视树上它时愤怒值涨(0.45→跳下)。对峙机制：看它会缩小巢区/吓退它。&lt;3.5 单位直视冻结态→立即攻击。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>视觉(67° 视野，90 单位)</strong> + <strong>听觉</strong>（20 单位内噪音反应，或专注时 8–17；上次噪音&lt;2 秒时抑制）。被看时"冻结"(0.08 秒)。被看度按直视度+距离累积。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 4 HP。状态 1 或 2 时击中→立即进入状态 0（逃跑）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>恐惧值达阈值/玩家向其冲刺(恐惧值 2/秒，0.8 后 1.2 秒或 2.0 后 0.5 秒逃跑)/室外时关门→逃回状态 0。最多 6 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外。<strong>仅 Vow(43%) 和 March(15%)</strong>。Power 2。v80 新增。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>真实美洲狮/美洲豹行为（背后偷袭）。保持目光接触是威慑（同狒狒鹰）。极近距离时目光接触有反效果（触发扑击）。橙色衣服/高可见标记激怒它。只猎玩家。代码 3530 行。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="7">白天实体（7 只）</h3>
+<hr />
+<h3 id="26-manticoil-double-wings">26. Manticoil / Double Wings（螳螂鸟 / 双翼鸟）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>飞行。接近/惊吓时散入天空。地面成群觅食。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>无——无害</strong>。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>接近或声音超阈值时飞走。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>听觉（音量触发飞行）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 1 HP（1 近战）。免疫双管猎枪。可眩晕（原地转圈）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>11:58 AM 离开（v60+）。最多 16 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（白天）。偏好：Offense（100%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>两大无害实体之一（另一为游荡蝗虫）。可用于分散旧鸟注意力（导弹打偏，螳螂鸟飞走）。飞船摄像头监视器上看不到。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="27-roaming-locust-locust-bee">27. Roaming Locust / Locust Bee（游荡蝗虫 / 蝗蜂）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>球形编队飞行。玩家跑过时散开。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>无——无害</strong>。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>无。接近时飞走。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 免疫。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>最多 5 只。飞船摄像头监视器上看不到。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（白天）。偏好：Experimentation（35%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>两大无害实体之一（另一为螳螂鸟）。温顺。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="28-circuit-bee-red-bee">28. Circuit Bee / Red Bee（电路蜂 / 红蜂）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>围绕蜂巢。追威胁直到够远后返回。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>10 伤害/2.5 秒（25 DPS）。蜂巢成员间导电。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>领地型——接近蜂巢时防御。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近蜂巢。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌ 无敌。震撼弹、电击枪、铲子无效。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>威胁跑够远后回蜂巢。11:57 PM 消失（v50）。最多 6 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（白天，仅飞船着陆前第一周期）。偏好：March（36%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>蜂巢是可拾取废品。可"口袋"在飞船栏杆上。不能穿门。Bug：可能永久敌对。上坡能追上。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="29-tulip-snake-flower-snake">29. Tulip Snake / Flower Snake（郁金香蛇 / 花蛇）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>像螳螂鸟漫游。区域间飞行。<strong>附着到玩家头上</strong>。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>无直接伤害</strong>——但把玩家带到天上（约 10 秒飞行），可能摔伤，或飞进工厂风扇（斩首，蛇也死）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>扑向玩家直到附着。最多 5 条同时带一个玩家（共约 16 磅）。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 1 HP。免疫眩晕。铲子/停车牌/让行牌一击全杀（瞬间失去飞行）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>几次尝试后疲倦，释放玩家，回漫游。3:21 PM 离开。最多 12 只。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（白天）。可被附着玩家带入室内。偏好：Adamance（6%）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>可作临时喷气背包（飞行控制同喷气背包）。阻止陷阱蚤附着。三色变种（红/蓝/黄）。拍翅声引来无眼犬（致命组合）。首个可同时在室内外的实体。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="30-giant-sapsucker-woodpecker-kiwi">30. Giant Sapsucker / Woodpecker / Kiwi（巨啄木鸟 / 几维鸟）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>快（攻击阶段时间越长越快，同小丑）。不会飞。可在窄空间蹲下+伸腿。近 360° 视野。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>10 伤害（对其他实体 4）。攻击/移动速度在攻击阶段随时间增加。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>保护巢。玩家/实体接近巢时进入守卫态。直接接触或太近巢时激怒。<strong>拿蛋的玩家被锁定</strong>——会撬开飞船门追。被攻击时暴怒。再次见到幸存者会记住。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（锐利，约 360°）。<strong>麦克风不吸引它</strong>（不同于无眼犬）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 28 HP。闪电有效（暴风雨天）。公司巡洋舰可撞死/刮到。高血量。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>最终停止攻击回巢。优先取回丢地蛋而非攻击。最多 1 只。Power 4（最高）。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（白天）。偏好：Vow（7%）。巢内有可拾取蛋。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>唯一能在窄空间蹲下+伸腿的实体。蛋孵化成哭啼的幼啄木鸟（引来母鸟）。可破门。目击暴怒态施加恐惧效果。狒狒鹰目标其蛋。唯一 Power 4 实体。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="31-kidnapper-fox-bush-wolf">31. Kidnapper Fox / Bush Wolf（绑架狐 / 灌木狼）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>藏在虚荣罩斑块中。潜行绕到玩家背后。拖附着的玩家到击杀区。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>撕下玩家头颅（秒杀）</strong>——仅在击杀区。舌头附着本身无伤害。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>巢区(随时间扩大，无上限)+击杀区。进巢→狩猎态。对峙机制缩小巢区（多人时除一人外所有人须盯着）。追击时击杀区扩大一倍多。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉+领地接近。与虚荣罩融为一体。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 7 HP。最佳：巡洋舰碾过。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>被攻击或击杀后回藏身。每局只刷 1 只。刷新概率=虚荣罩数/50（需 17+ 罩）。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外。任何月亮（含秘密）。需 17+ 虚荣罩。v60 移除，v80 重加。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>两区（巢+击杀）。对峙缩小巢。舌头拖玩家。关门夹舌头可阻止（需队友）。巡洋舰座位上的玩家不会被附着。旧鸟不追它们。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="32-vain-shroud">32. Vain Shroud（虚荣罩 / 红蕨）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>静态植物。成群生长。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>无——无害</strong>。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>无。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>无。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>除草剂可根除（非"击杀"为实体）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>永久，除非除草剂清除。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>室外（白天）。所有月亮 20% 概率。最多 20。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>绑架狐生成必需条件。首个被识别为实体的植物。有图鉴条目。清除罩减少狐概率（但概率在飞船着陆时设定）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="2">已废弃实体（2 只，不生成）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>名称</th>
+<th>HP</th>
+<th>Power</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>33</td>
+<td>Lasso Man（套索人）</td>
+<td>3</td>
+<td>2</td>
+<td>红绳人形，最多 2，眩晕 4.0x，从不出现</td>
+</tr>
+<tr>
+<td>34</td>
+<td>Red Pill（红色药丸）</td>
+<td>∞</td>
+<td>2</td>
+<td>追玩家的 PNG 图（Nextbot 风格），最多 0，从不出现</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="repo-29">二、R.E.P.O. — 29 只敌人</h2>
+<blockquote>
+<p>HP 为具体数值。Tier 1=低威胁，Tier 2=中，Tier 3=高。关卡：Headman Manor、McJannek Station、Swiftbroom Academy、Museum of Human Art、Service Station、Disposal Arena。敌人不在玩家所在房间生成。死后约 10 分钟重生。</p>
+</blockquote>
+<h3 id="tier-19">Tier 1（9 只）</h3>
+<hr />
+<h3 id="1-gnome">1. Gnome（地精 / 陶瓷侏儒）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢；地面行走。无目的漫游。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>10 伤害/镐击。<strong>优先破坏贵重品</strong>而非攻击玩家。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>接近触发。优先物品&gt;玩家；无物品时才攻击玩家。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 极脆。抓起摔墙/摔地。快速上下甩。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>N/A（容易死）。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>死亡不掉落魂球</strong>。纯滋扰——毁你的战利品。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="2-peeper">2. Peeper（大眼仔 / 窥视者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>静止——生成在天花板上</strong>。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>2 伤害/秒（DoT）。用光束+尖叫声锁定玩家视线。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>进入玩家<strong>视野</strong>时触发。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（玩家必须看它）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 从门口扔小物品（2–6 击）。掉落随机地图上的球。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>玩家断视线几秒后消失。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>只有进入视野才影响你——经过时低头。2–3 秒宽限后才开始伤害。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="3-shadow-child">3. Shadow Child（影子娃娃 / 暗影之子）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>仅传送</strong>——间歇出现/消失，带孩童咯咯笑。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>Jumpscare：被看 2–3 秒后说"yoink"，造成 <strong>30 伤害</strong>+大击退（常导致额外物理伤害）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>玩家看它</strong>触发。屏幕在视野内时微暗。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（凝视机制）。对噪音无反应。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 极低 HP。跳跃中撞它或近战。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>被击后传送走（每次延迟更长）。约 10 秒后自行离开。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>Jumpscare 前从背后伸出 6 条苍白手臂。别看它——看地板或面壁。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="4-spewer">4. Spewer（呕吐怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>地图内飞行。中速。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>10 伤害/秒（DoT）。向玩家呕吐或<strong>附着到脸上</strong>。导致玩家周期性呕吐，伤害其他玩家、贵重品甚至敌人。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家→飞向附着。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 75 HP。附着前抓住可吓跑。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>附着前被抓则逃跑。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>呕吐可伤害其他敌人——潜在友伤武器。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="5-ducky-apex-predator">5. Ducky / Apex Predator（达克鸭 / 顶级掠食者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>被动形态</strong>：地面慢摇。<strong>攻击形态</strong>：飞行，极快。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>被动：无害，跟着你试图站前面。看别处(抬头)时它跳。攻击：10 伤害/咬，约 3 咬/秒（30 DPS）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>被动直到<strong>被抓或被击</strong>（含被其他敌人误伤）。变形约 10 秒后恢复。追被眩晕处最近的玩家。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（跟随看到的玩家）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 150 HP。最佳：在提取点碾碎（自动卖球）。也可引到坩埚(Swiftbroom)、壁炉(Manor)或坑洞（用车挡飞行逃跑）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>攻击形态约 10 秒后恢复被动。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>不可投掷（力量="不可能"）。其他敌人的误伤也触发敌对态。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="6-bella">6. Bella（贝拉 / 三轮车）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>骑三轮车。中速。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>冲撞玩家。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家→冲撞。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 任何武器眩晕，然后拾起摔（每次摔释放再抓以防布娃娃断裂）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准消失。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>低危险等级。较新敌人（无 wiki 页）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="7-birthday-boy">7. Birthday Boy（生日男孩 / 气球男孩）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>行走/漫游。中速。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>冲向玩家。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家→接近。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 任何物品击中变布娃娃，然后拾起摔（每抓周期摔 2 次以防布娃娃断裂）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准消失。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>低危险等级。较新敌人。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="8-elsa">8. Elsa（艾尔莎 / 肌肉神犬）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>地图漫游。正常中速。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>初始被动：围着你转、摇尾、兴奋吠叫求关注。<strong>被忽略 15+ 秒或被击</strong>→狂暴（快、攻击性）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>关注驱动——要你互动。被击触发狂暴。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉+接近。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td><strong>600 HP</strong>——全游戏最高（比拖行者高 100）。战斗中<strong>实际无敌</strong>。只能通过提取点杀（卖球时靠在红色激光上）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>给它关注就冷静。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>像兴奋的狗。鸭子桶物品(秘密房间)可完全 immobilize Elsa。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="9-tick">9. Tick（蜱虫 / 寄生虫）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>快，停停走走的 erratic 移动。<strong>地面、墙壁、天花板</strong>上爬。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>跳跃<strong>附着</strong>到半机器人身上，吸血。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>群体行为——发现玩家就冲。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉/接近。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 低 HP。用长柄近战或空中射落。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。<strong>总是 3–5 只一群</strong>。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>恶心干点击声。可爬墙/天花板（同尖叫者）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="tier-212">Tier 2（12 只）</h3>
+<hr />
+<h3 id="10-animal">10. Animal（动物 / 蟑螂人）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>6 腿，低姿态行走。<strong>看到玩家就恐慌乱跑</strong>——不持续追。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>乱撞——打掉手中物品，伤害附近战利品。腿可打到物体下的玩家。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>看到就恐慌，冲向玩家，然后乱跑到冷静。不持续追。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 多人同时抓住停止乱动；然后摔墙/摔地。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>自行冷静。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>乱动时可弹开物体。可引导它在恐慌中杀小敌人（尖叫者、地精、巨婴）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="11-banger">11. Banger（炸弹人 / 自爆骷髅）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>小脚行走。无目的漫游。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>自杀炸弹</strong>——发现玩家或被击时点燃自己的炸药引线。约 15 秒引线。爆炸伤害按距离缩放；近距离致命。<strong>死亡时即使引线未点也爆炸</strong>。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家或被击→点引线。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 50 HP，但死亡爆炸。可拾起(0 力量)当武器扔向其他敌人。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>N/A——爆炸。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。<strong>总是≥3 只一群</strong>。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>不掉魂球</strong>。容易挣脱你的手。最佳当投掷武器用。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="12-bowtie">12. Bowtie（蝴蝶结怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>大型白色实体。尖叫后可冲向玩家。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>尖叫</strong>——推退玩家、定身、5 伤害/tick。也可冲锋伤害路径上的一切。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>视线+碰撞/接触。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视线、碰撞、接触。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 100 HP。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>McJannek Station、Swiftbroom Academy。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>尖叫可伤害贵重品和其他敌人。可把你推入坑洞——边缘小心。可吹回投掷物/手雷。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="13-chef-chef-el-cousael">13. Chef / Chef Él Cousaël（主厨 / 蛤蟆主厨）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢漫游。发现玩家时<strong>跳跃</strong>。可跳过障碍。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>双肉刀快速挥舞。低但<strong>持续伤害</strong>累积快（10/击，AoE）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家→停、笑、跳。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 150 HP。环境摔约 4 击。跳空→半布娃娃，短暂脆弱。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。常<strong>成群</strong>。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>攻击可伤其他主厨——用闪避减少其数量。小贵重品对它有效。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="14-gambit">14. Gambit（赌徒 / 轮盘哥）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>发现玩家时冲来。中快。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>无正常攻击</strong>。抓住玩家，张嘴露出旋转"幸运轮盘"，5 种结果：🔴红=-50 HP · 🟢绿=+25 HP · 🟡黄=钱袋(~$1,000) · ⚪白=满血 · ⚫黑=HP 设为 1。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现半机器人→冲来抓住。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。附近有马戏团音乐。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 150 HP，武器很容易杀。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>不要在它抓住队友时攻击/眩晕它</strong>——打断轮盘对被抓玩家造成 60 真实伤害。钻桌椅下断其寻路。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="15-headgrab">15. Headgrab（夺头怪 / 哥布林）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>无目的漫游。发现玩家时冲锋。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>快速连击组合。一咬=<strong>50 伤害+眩晕</strong>。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家→痛苦呻吟→冲来连击。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 力量 13 可空手抓。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>核心机制</strong>：地图上有死玩家头颅时，哥布林跑去捡起来戴上。头顶举医疗包压缩受击框使其失去目标。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="16-heart-hugger">16. Heart Hugger（噬心怪 / 抱心植物）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>钻入地下</strong>在表面下移动，然后钻出。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>从下方抓住/拥抱玩家。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家→向其钻去。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉/接近（地下追踪）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 中等 HP。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>植物状生物。可从地下攻击——难预测钻出位置。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="17-hidden">17. Hidden（隐形人）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>近乎隐形。<strong> erratic 冲刺</strong>穿过地图，同时搬运一个玩家。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>不直接伤害玩家</strong>。拾起玩家，搬运穿过地图，丢在某处。风险：丢到更危险的敌人附近。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>路径上的玩家被拾起。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近（玩家须在其路径上）。留<strong>脚印</strong>和沉重<strong>呼吸声</strong>可见/可听。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>未知（无 HP 数据）。抓住隐形人或被搬玩家可中止绑架。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>跑完后丢下玩家。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>听重呼吸和脚步声。找脚印。不便民而非致命——但可间接致死。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="18-mentalist">18. Mentalist（精神分析师 / 脑怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>冥想姿态<strong>悬浮</strong>。可<strong>传送</strong>到地图任何位置（前空翻+音效）。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>反重力光环(紫色)抬起玩家/物品，定身约 10 秒。然后变<strong>红</strong>把一切摔下——50 基础伤害+坠落物的大物理伤害。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>玩家太近时激活光环。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>聋且半盲</strong>——保持距离避免被发现。差物体恒常性。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 150 HP，低。攻击后有小冷却——用常规武器杀。力量 4 可抓。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>差物体恒常性——逃到另一房间。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>别躲家具下——摔落物品的物理伤害会杀你。队友可把你拉出光环（或等变红后搬出）。落在 C.A.R.T. 上可免摔伤。不主动掉洞除非强制布娃娃。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="19-oogly-oogley">19. Oogly / Oogley（奥格利 / 天花板探照灯 / 大眼怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>悬停在天花板最高处</strong>。飞行。无声移动。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>用明亮<strong>绿色聚光灯束</strong>扫描下方（或铺绿色丝线）。玩家进入光束→瞬间俯冲，近战伤害。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>光束接触触发攻击。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉（主动聚光灯扫描）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 麻醉枪或电击枪眩晕，然后近战打死。力量 9 可抓。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>活体监控系统。避开绿光束。推荐远程眩晕武器。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="20-rugrat">20. Rugrat（巨婴 / 投掷婴儿）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>无目的爬行。攻击时大型、跳跃、极快。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>拾起能找到的最贵物品<strong>扔向玩家</strong>——伤害玩家和贵重品。可用投掷物杀全队。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>附近找到贵重品→扔向附近玩家。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近(贵重品)+视觉(玩家)。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 150 HP。多摔几次就死。力量 4 可抓（或先眩晕）。可从其手中抢物品。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>投掷物可伤其他敌人（偶尔自己）。有时试图拾太重物品扔不动。让贵重品远离它。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="21-upscream">21. Upscream（尖叫者 / 蜘蛛人）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>小型人形。<strong>地面、墙壁、天花板极快爬行</strong>。骨头碎裂声。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>对玩家脸尖叫，扔过房间，<strong>眩晕约 2 秒</strong>。10 伤害/扔+物理撞击。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家→尖叫+扔。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 50 HP，轻。一枪毙命。力量 4 可抓。两人同时抓=瞬间连环眩晕。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td><strong>3 次成功抓取后</strong>逃到上次攻击 2 房间外。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。<strong>2–3 只一群</strong>。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>可无限连环眩晕玩家（链 CC）。喜欢把玩家扔进坑洞/深渊。用长柄近战空中拦截。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="tier-38">Tier 3（8 只）</h3>
+<hr />
+<h3 id="22-headman">22. Headman（首级怪 / 浮空头颅）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>漂浮</strong>搜索玩家。发出咬/咀嚼声。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>冲撞<strong>咬</strong>——50 伤害/咬+物理击退。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>对闪光灯极敏感</strong>——手电照它会导致尖叫冲锋。否则不太激怒。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视线+接近（站立时）。手电敏感。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 250 HP。力量 13 可扔。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td><strong>休眠一段时间后消失/传送</strong>。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>蹲着经过它（手电绑定蹲态）。差触及——躲物体下。头顶举医疗包缩受击框。剧情重要实体——Headman Manor 主人。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="23-huntsman">23. Huntsman（猎人 / 盲眼枪手）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢慢<strong>巡逻周界</strong>。用霰弹枪当盲杖。<strong>完全失明</strong>——<strong>下楼梯/高处会摔</strong>，受伤+眩晕。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>霰弹枪射击——<strong>近身秒杀</strong>，伤害按距离缩放。拔枪、瞄准约 0.5 秒、朝最后噪音方向射。约 2 秒装弹。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>声音驱动</strong>。听到：语音、TTS、抓物、脚步、翻滚、跳跃。<strong>听力是其他怪的 5 倍</strong>——隔一间房都能听到语音。朝最后听到的噪音射。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>纯听觉（完全失明）</strong>。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 250 HP。最佳：反复引上楼梯——摔伤最终杀死。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>可预测地巡逻周界。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>附近时阴森安静音乐+眩晕屏幕效果。瞄准前咕噜声=预判射击。可击中/杀其他敌人——扔物品诱饵。注意：附近有达克鸭时别抬头（光标高度触发鸭跳→猎人射击）。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="24-loom">24. Loom（织梦婆 / 维多利亚怨灵）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢。<strong>直线走向目标玩家</strong>。可穿墙感知。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>高伤害近战。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>狩猎开始时<strong>选定一名玩家</strong>——目标看到 Loom 半透明的手在屏幕边缘+听到心跳。她盯着你直线走来。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉+<strong>穿墙感知</strong>（穿墙追踪目标）。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 但<strong>免疫环境碰撞伤害</strong>（摔墙无效）。只能推入<strong>坑洞/深渊</strong>或通过<strong>提取点</strong>（武器眩晕、用车困住、激活活塞——真空秒杀，无需子弹，球算配额）。力量 13（眩晕时 5）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>几次攻击落空后沮丧离开。绕着她转（秦王绕柱）反复跳过她。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>维多利亚幽灵女外观。提取点最佳免费杀。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="25-robe">25. Robe（长袍怪 / 死神）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>漫游<strong>相当快</strong>。跟随玩家时：慢但不停。暴怒时：<strong>加速追击</strong>。可飞回洞里(bug)。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>100 伤害普通击。家具下攻击时 50 基础+大击退（可一击物理秒杀）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>慢慢跟随玩家。玩家<strong>直视它</strong>→暴怒高速追。好物体恒常性——够到桌/床/柜下。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>直视线+视觉+听觉（近时调查噪音含语音）。<strong>凝视机制</strong>——看它会激怒它。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 250 HP。最好避开。麻醉枪、震撼弹有助逃跑或击杀。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td><strong>3–4 分钟无人接近后消失</strong>。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>很鬼祟，几乎无声。不暴怒时你走得比它快。别把准星放它身上。只在床上安全。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="26-trudge">26. Trudge（拖行者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>极慢</strong>。拖武器走路一瘸一拐。武器冒红火花。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>武器砸——<strong>100+ 伤害</strong>。拉附近玩家/贵重品向它（AoE 真空）后爆炸。可趴下伸脖子到物体下咬藏着的玩家。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家→蓄力砸。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>肚子上的眼</strong>可看到藏在物体下的玩家。脖子上的眼四处看。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 500 HP（仅次于 Elsa 第二高）。力量 13（眩晕时 4）。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>标准。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>蹲走绕着它，只要脖子没看你的方向。AoE 拉扯半径比预期大——蓄力时立刻撤离。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="27-reaper-miralda">27. Reaper / Miralda（死神 / 稻草人）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>走路带独特干草沙沙脚步。追击时其实不快。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>挥臂刀，10 伤害/斩。可 100→0 HP 约 2 秒。攻击时可<strong>弹开物体</strong>。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>视觉驱动</strong>。发现玩家→冻结 1 秒盯着，然后咆哮挥刀冲。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>纯视觉——完全失聪</strong>（听不到语音、冲刺、跳跃）。但可检测<strong>重力束</strong>（玩家拾物）。差视力——蹲下有效。差物体恒常性。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 250 HP。因可预测行走，近战/麻醉枪的好靶子。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>差物体恒常性——断视线拐一个角躲。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>别立刻躲（触及好，会看物体下）。而是跑拐一个角再躲。可伤路径上其他怪。注意：在达克鸭附近触发它=几乎必死。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="28-clown">28. Clown（小丑 / 激光蛙）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>驼背大型蛙状。响亮脚步。可从掩体下踢。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>激光束</strong>（鮟鱇鱼鼻灯，伴笑声，8 秒冷却）+ <strong>踢</strong>（10 伤害，但可把你打飞过房间最多 50 撞击伤害）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>视线。太近时踢，即使未激怒从掩体下。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视线。<strong>视力差、中度失聪</strong>——但仍保持距离。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>✅ 250 HP。激光瞄上身——蹲/翻滚躲。踢可跳过。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td><strong>差物体恒常性</strong>——跑开容易逃。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>附近时屏幕震动——听脚步方向。不转向你时可走近/蹲。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="29-cleanup-crew">29. Cleanup Crew（清理小队）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>群体实体（多单位）。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>高伤害（Tier 3）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>未知（无详细 wiki 页）。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>未知。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>未知。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>未知。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>任何关卡。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>最新敌人，🔴高危险。无 Fandom wiki 详细页。可能是"清理"区域的 squad 型敌人。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="content-warning-32">三、Content Warning — 32 只怪物</h2>
+<blockquote>
+<p>大部分怪物<strong>不可击杀</strong>，核心应对是逃跑+防御道具（电击棒、黏液球）。氧气 500 秒倒计时是全局催命符。</p>
+</blockquote>
+<hr />
+<h3 id="1-snail-zombie">1. Snail / Zombie（蜗牛僵尸）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢蹒跚行走。巡逻/漫游。不爬/飞。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>抓住玩家，慢慢吸血（DoT）。非秒杀。弱握——可挣脱。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>视线/接近发现。可 3–5 只成群（最多 5 只）。靠数量压制。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉/接近。无特殊感官。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。电击棒可眩晕。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>断视线后最终忘记停止追。可能随机再现。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图（工厂、酒店、停车场、隧道）。常见。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>0.9B 更新起可通过蜗牛生成器中途生成。最常见怪物。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="2-snatcho-chokelegs-phantom-thief">2. Snatcho / Chokelegs / Phantom Thief（暗影抓取者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>四肢 brisk 爬行。移动"狂野"/erratic。中快。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>从背后跟踪，抓住向后拖，慢慢吸血（DoT）。也可偷你手持物品。无物品时可能抓杀。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>玩家进入范围前在特定区域漫游，然后跟踪。可 1–5 只同时（隧道图 3–4 只群）。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉/接近。藏身阴影。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。<strong>光是克星</strong>——手电/摄像机光/照明弹使其消散/消失。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>被光照到消失。否则持续。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图，尤其隧道。常藏阴影。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>光驱散机制。偷物品。暗色人形带犬吻。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="3-whisk-mixer-man">3. Whisk / Mixer Man（搅拌器头）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>高大双足机器人。漫游（不主动寻玩家）。冲锋时直线。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>两阶段：(1)识别/蓄力——面向玩家，高速旋转搅拌器头(大声搅拌噪音，前摇)，(2)直线高速冲锋。每次半血。2 击致死。撞墙可自己倒。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>看到就攻击但不追。低智力。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。看到即检测。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。引到墙/激光可眩晕。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>冲锋失败后暂停再蓄力。反复失败后撤退。不追。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>多在结构内，尤其工厂。可 1–3 只。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>"工具箱"组（风扇、锤子、熨斗、吸尘器变体在游戏文件中但未用）。仅直线冲锋——侧步即可。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="4-big-slap-the-titan">4. Big Slap / The Titan（巨掌怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>巨大人形，2 倍人高。<strong>跑不过</strong>——尽管体型极大却极快极灵活。巡逻区域而非直接狩猎。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>两招：标准掌击（半血）、跳跃攻击（一击秒杀）。长触及。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>巡逻。发现后追。<strong>盯着它的画像物品(旧画)看太久会召唤它</strong>。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。响亮呼吸和脚步可听。尖叫=有人被追。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。电击棒无效——即使眩晕也保持力量。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td><strong>不放弃</strong>。游戏内最危险实体。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>民用结构，尤其飞船图"迷宫"区(4 楼)。罕见工业建筑。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>画像召唤机制(IW-005:旧画)。当前最危险实体。无可靠逃生。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="5-slurper-star-beast-starfish">5. Slurper / Star Beast / Starfish（吸盘海星）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>静止在天花板上</strong>。不移动。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>从中心洞垂下几乎不可见的爪。玩家碰到爪→抓住卷上去，慢慢吸血（DoT）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>被动陷阱。等猎物走进爪。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近（触碰触发）。爪几乎不可见——手电可显轮廓/阴影。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。<strong>扔物品(按 Q 蓄力投掷)让它释放玩家</strong>。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>持续陷阱。释放后尝试再抓。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>结构天花板。不常见。同房间可多只。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>用诱饵物品(骨头、动物头)引玩家。唯一天花板居住敌人。半-life Barnacle 机制。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="6-spider">6. Spider（蜘蛛）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>快。主动追猎。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>吐蛛丝展开成粘网困住玩家（大减速，无伤害）。然后上前咬——<strong>4–5 咬致死</strong>（约 1/4 血/咬）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>主动猎手。寻食而非织陷阱。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。看到就追。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。<strong>电击棒极有效</strong>。狂跳加速脱网。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>持续追。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>废弃结构内。常见。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>网机制困玩家并为其他怪铺垫。扁平身体，垂直嘴裂开。有蜘蛛恐惧症模式。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="7-weeping-iron-maiden-catchya-cage">7. Weeping / Iron Maiden / Catchya Cage（铁处女 / 哭泣天使）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>Weeping Angel 机制——不被看时才移动</strong>。被盯着时静止。不在视野内时极速移动。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>把玩家困入笼中。非秒杀——触发<strong>1:30 倒计时</strong>。队友须在其平板上解"Catchya"(CAPTCHA)谜题。3 次机会。失败或超时→吸血/杀被困玩家。也可短距离突袭。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>被发现前静止，不被观察时追。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>视线/视觉——"凝视"机制</strong>。必须保持在视线内。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。<strong>解谜中和它</strong>——面具变笑脸，不再威胁。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>解谜后永久中和。谜题失败杀后消失。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。可 1–2 只。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>Doctor Who Weeping Angel 机制。CAPTCHA 谜题(SpöökTube "CATCHYA")。<strong>单人不可解</strong>——平板朝另一边。响亮金属撞击声。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="8-larva-chuckster-grabber-centipede">8. Larva / Chuckster / Grabber / Centipede（幼虫 / 百足虫）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>百足虫状，滑行。<strong>起初慢，后加速到快</strong>。一旦锁定难跑过。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>抓住玩家，举起扔——扔向另一玩家(伤两者)或随机。扔=半血(摔伤)。<strong>被扔两次=死</strong>。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>领地型。视玩家为威胁，看到就攻。不主动寻但发现后追。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。远距离发现玩家。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。电击棒/黏液球可临时眩晕。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>最终放弃回领地。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。漫游直到看到玩家。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>扔机制可同时伤两玩家。模糊人形虫多眼多臂无腿长百足身。爬非倾斜面可逃(不会爬)。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="9-mouthe-goblin-screamer">9. Mouthe / Goblin / Screamer（大嘴怪 / 尖叫者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>小矮胖。<strong>极快</strong>——可跑过大多数实体。无目的漫游。胆小——玩家冲来时逃。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>非致命</strong>。正常不攻击。选定一玩家为目标，跑到背后，大声尖叫吓人。被逼角或被电击时可能反应。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>选一玩家为目标跟随。引玩家到最近敌人。附近无怪时持续尖叫。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉/接近。听脚步(自身快移的轻拍)。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌（且非致命）。电击棒有效但"无心"。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>尖叫后跑开。接近时逃。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。成群。多在结构内。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>尖叫静音/聋化语音通讯</strong>——受害者听不到队友。非致命干扰怪。橄榄球形头，大嘴带牙，2 小眼。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="10-gundog-dog">10. Gundog / Dog（机器狗）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>四足机器人。漫游守卫。去最后看到玩家位置。低矮——可跳过其头。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>机载炮塔射弹幕。高射速，大弹仓。不准但持续。致命。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>炮塔独立于身体运作——移动时扫描。红传感灯=扫描。看到就射。追到最后已知位置。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>视觉(红色激光扫描器)</strong> + 狗眼。双重警戒。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。电击棒暂时倒身体但<strong>炮塔继续射击</strong>。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>在最后看到处逗留。持续。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>结构内外。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>双扫描器(眼+炮塔)。身体眩晕时炮塔仍射。人造战争机器人。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="11-ear">11. Ear（耳朵怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>四足，笨拙移动。不擅追。<strong>可长跳</strong>。四肢着地。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>抓住玩家，造成痛苦伤（DoT）。非秒杀。低级威胁。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>攻击性。检测到就追。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>听觉（声音驱动）</strong>——被噪音吸引，最低声音也行。可听到心跳(潜行无效)。<strong>矛盾地被巨响吓跑</strong>——对麦克风吹叫让它逃。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。电击棒有效。<strong>对麦克风吹叫吓跑它</strong>。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>被巨响淹没时逃跑。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。不常见。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>麦克风反制</strong>——吹叫吓它。声吸引+声恐惧矛盾。身体覆满耳朵，头是一个大耳朵，无眼。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="12-eyeguy-bird-brain">12. EyeGuy / Bird Brain（眼球怪 / 鸟脑）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>矮胖慢。除非被激怒否则站立。满体力可轻松跑过。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>被激怒时用矛状臂拍。<strong>6–8 击致死</strong>。触发时瞳孔缩小。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>除非被光触发否则和平</strong>。手电或摄像机光激怒它。远距离不触发。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>视觉(光敏眼)</strong>——对光束反应。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。电击棒/黏液球有效。冲刺轻松逃。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>断视线后停止追。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>光触发仇恨。头上的巨眼球，长矛状臂。齿轮内两眼的机器鸟变体(Bird Brain)。光远离则无威胁。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="13-flicker-the-monolith">13. Flicker / The Monolith（闪烁者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>高大独眼暗色/骨骼鱿鱼状实体。灯泡附近显现。显现后缓慢移动。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>美杜莎效果——看它=你和全队瞬间死亡</strong>。一旦被困入触手，无法移开视线或逃脱。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>存在约 1 分钟后显现。显现中/后看它→亮红光困住你。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>"凝视"机制(反转)</strong>——它不看你，<strong>你看它才杀你</strong>。征兆：灯泡闪烁、摄像机故障/模糊、屏幕闪红。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。<strong>电击棒和黏液球无效</strong>。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>可避——从不看它就无害。看空白墙走过去。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>地图任何有灯泡处。罕见。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>反转凝视机制</strong>（它不盯你——你盯它才死）。全队秒杀。Slender Man 状。水母/鱼叉外观带触手腿。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="14-bombs-bomb-tosser-the-bomber-man">14. Bombs / Bomb Tosser / The Bomber Man（炸弹怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>慢。蛙跳式移动。无腿人形带巨大手套。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>扔定时引线爆炸弹（滚后 AoE 爆炸）。玩家太近时发橙光<strong>自爆</strong>（自杀跳跃但不一定死）。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>发现玩家，停下从背上取炸弹扔。边追边扔。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌，但<strong>电击棒($400)可打</strong>。可捡其炸弹入库存。引到自己的炸弹上。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>慢追。炸弹爆前有嘶嘶声(预警)。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。死胡同和小房间最危险。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>自毁机制。自己的炸弹可反制。爬行的鱿鱼状生物。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="15-barnacleball-barnacle-the-destroyer">15. BarnacleBall / Barnacle / The Destroyer（藤壶球）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>藤壶球带触手臂。跨地图狩猎有速度（但玩家跑速略胜）。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>三种：(1)<strong>近战拍</strong>——3 击致死，(2)<strong>远程吐</strong>——远处致幻(DoT)，够到高处，(3)<strong>旋风/涡流</strong>——旋转，吸附近所有玩家，然后近战。弹入空中摔伤。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>主动猎手。看到就追。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。即使远/高处也知道你在哪。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。<strong>电击棒临时眩晕</strong>。用环境硬掩体避涡流。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>持续猎手。绕角避气流。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>三种独立攻击。涡流/吸力机制。远程攻击够到高处。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="16-jello-jelly-slime-pig">16. Jello / Jelly / Slime Pig（果冻怪 / 黏液怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>大感知黏液团，蛞蝓形。<strong>与玩家跑速同快</strong>。意外快。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>非致命</strong>。吞/包裹玩家，高速随机方向跑，然后丢下。第一次抓=搬运(可能到另一怪附近)。<strong>第二次抓=把你扔向某物致死</strong>。可穿过激光(杀你)。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>看到就追。漫游特定区域。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。<strong>电击棒无效</strong>。用角、楼梯、地形躲。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>几秒后丢下玩家。会再试。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>非致命但搬运到危险处(免费送到怪旁)。光可穿身(可从内部拍摄)。半透明黄黏液，水熊虫/熊形。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="17-knifo-harpoon-ghost-child">17. Knifo / Harpoon / Ghost Child（刀鬼 / 鱼叉手）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>快跑。小(比人小)。有<strong>跳跃攻击</strong>。可跳够到高处玩家。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>持刀追，接触刺。<strong>5 刀致死</strong>。跳跃攻击伤害更高+失衡。刺后咯咯笑跑开。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>看到就攻。持续追。可 1–5 只。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。音效：<strong>孩童咯咯笑</strong>=已生成。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。<strong>黏液球减速，电击棒眩晕</strong>。爬无效(跳跃攻击范围)。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td><strong>追 10–30 秒后无聊消失</strong>。用走廊拐弯拖延。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。喜欢在潜水钟后生成，入口附近阴影等。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>少数到地面狩猎的怪。万圣节床单幽灵外观。两变体：持刀(Knifo)和持鱼叉(Harpooner——无头，射鱼叉拉你近)。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="18-angler">18. Angler（鮟鱇鱼）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>静止——不能离开生成点</strong>。游戏内最大怪物。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>创造队友<strong>拟态</strong>(蓝色拼凑脸)引你到亮蓝光。太近光→拉入<strong>秒杀</strong>(被吃)。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>被动诱饵。用拟态制造混乱。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>诱饵(光)。无主动检测。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>静止。避开光。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>工厂/酒店外，潜水钟着陆区附近。<strong>最稀有生物之一</strong>。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>拟态创造(假队友错脸)。光诱陷阱。鮟鱇鱼外观。不能移动。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="19-mime-blinking-waldo">19. Mime / Blinking Waldo（哑剧演员）</h3>
+<p>| 维度 | 拆解 |<br />
+|------| <strong>机动性</strong> | 高大人形。<strong>抽搐 erratic 定格动画式移动</strong>。慢。贝雷帽、眼镜、条纹衫裤。大笑容。 |<br />
+| <strong>攻击方式</strong> | <strong>多情况下一击秒杀</strong>。低哼着移向目标。 |<br />
+| <strong>仇恨机制</strong> | 静默接近玩家。够近则追。 |<br />
+| <strong>感官机制</strong> | 视觉/接近。静默接近。 |<br />
+| <strong>可击杀</strong> | ❌。 |<br />
+| <strong>放弃机制</strong> | 容易骗——吸引注意让队从侧翼逃。 |<br />
+| <strong>刷新</strong> | 所有地图。 |<br />
+| <strong>独特</strong> | erratic 定格移动。一击秒杀。像"Where's Waldo?"的 Waldo。可闪烁进出存在(Blinking Waldo 变体)。 |</p>
+<hr />
+<h3 id="20-streamer-stream-murderer-kill-streamer">20. Streamer / Stream Murderer / Kill Streamer（直播杀人魔）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>极快——瞬间匹配玩家速度</strong>。快速向玩家拖步。更高更壮的玩家模型，蓝脸恶作剧笑(&gt;:)。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>用<strong>电击棒(电击枪)</strong>每击大伤害。有语音台词。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>漫游直到发现玩家，以略慢于玩家跑速追。<strong>击杀玩家后采用受害者外观/名字</strong>。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。音效(语音台词)。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>持续追。听到来了就转身离开区域。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图（2024 年 5 月更新加入）。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>采用被杀玩家身份</strong>（分身机制）。带专业装备(电击棒、摄像机、3 氧气罐、显示实时聊天的屏幕)。玩家角色的凶杀对应物。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="21-camcreep-the-creep">21. CamCreep / The Creep（摄像机潜行者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td><strong>冲向持摄像机者</strong>（只追拿摄像机的玩家）。大眼人形，无眼/无发。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>太近则<strong>一击秒杀(扭脖)</strong>。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td><strong>只对持摄像机者出现</strong>。冲向摄像者。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>摄像机检测</strong>——追拿摄像机的人。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td><strong>被发现或离队太近太久时逃跑</strong>。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>只追持摄像机者</strong>。一击扭脖。对非摄像机玩家不可见/无关。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="22-puffo-puff-ball">22. Puffo / Puff Ball（河豚怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>小人形，驼背。<strong>极慢</strong>。向玩家慢走。小三指手。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>太近时<strong>膨胀</strong>(河豚状)造成伤害+击退。背上有大尖刺生长。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>随机漫游直到看到玩家，然后极慢跟随。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>太慢不构成真正威胁。容易绕过。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>河豚膨胀机制。阴沉脸，明显耳朵。速度低致低威胁。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="23-fire-monster-fire-beast-fire-horse">23. Fire Monster / Fire Beast / Fire Horse（火焰兽）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>高大四足/双足带龟壳。极长细腿。方头。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>嘴喷火</strong>。火焰在地面持续数秒，形成火墙。每墙 5 伤害。<strong>伤害叠加</strong>多墙——容易瞬间烧死或与队分离。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>看到就追。肆无忌惮喷火。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>保持距离可活。<strong>站高处 20–30 秒它就放弃</strong>。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图，尤其旧世界表面。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>滞留火墙(地面 DoT 区)。可叠加伤害。龟壳背。找高处逃生。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="24-worm-leech">24. Worm / Leech（蠕虫 / 水蛭）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>蛇形蠕虫。<strong>慢</strong>。匍匐前进。跛行尺蠖移动。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>无伤害</strong>。附着到玩家身上。连接两侧两个玩家——一个走另一个必须跟。一个被攻另一个脆弱。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>慢慢接近玩家。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>慢移，跑开即可。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>系绳机制</strong>——连接两玩家。两端各一大嘴。滋扰非致命。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="25-arms-long-arms-man">25. Arms / Long Arms Man（长臂怪）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>极长臂人形。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>抓住玩家。推荐电击棒眩晕。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>通过脚步/声音线索检测。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td><strong>听觉（声音驱动）</strong>——通过脚步或其他声音线索检测。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。电击棒推荐。用同蜗牛逃生策略。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>未知。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>唯一被削过的敌人</strong>。发布时意外 0% 生成率(似乎"未用")。已修。声检测。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="26-black-hole-drone">26. Black Hole Drone（黑洞无人机）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>无人机。不确定行为。四面发光屏幕。独特嗡嗡声。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>召唤黑洞</strong>——极致命。涡流吸入玩家。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>非攻击性除非触发。容易忽略。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>接近/触发。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>持续移动防止它近距着陆。着陆了就再动。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>黑洞召唤。极显眼(发光屏幕+嗡嗡)。绝不让它触发。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="27-doppelganger-mimic">27. Doppelganger / Mimic（分身怪 / 模仿者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>模仿玩家。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>非致命。像玩家。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>非敌对。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>无。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>试着和它说话——不回答就是分身。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td><strong>玩家拟态</strong>。通过说话识别——不回话。被鮟鱇鱼用作诱饵(蓝拼凑脸)。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="28-robot-button-spider-mine">28. Robot Button / Spider Mine（蜘蛛地雷）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>四腿地雷，顶部红按钮。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td>按按钮则爆。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>静止陷阱。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>触碰/接近。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>别按按钮。忽略它。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>按钮触发陷阱。四足地雷。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="29-infiltrator">29. Infiltrator（渗透者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性/攻击/仇恨</strong></td>
+<td>信息有限。似乎是潜行型敌人。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>wiki 上记录较少的敌人之一。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="30-ultra-knifo">30. Ultra Knifo（超级刀鬼）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性</strong></td>
+<td>比 Knifo 大得多。<strong>略慢于玩家跑速</strong>。比玩家高。</td>
+</tr>
+<tr>
+<td><strong>攻击方式</strong></td>
+<td><strong>盯你几秒，然后冲锋</strong>。你在高处时<strong>向上跳几层楼</strong>够到你。</td>
+</tr>
+<tr>
+<td><strong>仇恨机制</strong></td>
+<td>盯然后冲。</td>
+</tr>
+<tr>
+<td><strong>感官机制</strong></td>
+<td>视觉。<strong>凝视前摇</strong>后冲锋。</td>
+</tr>
+<tr>
+<td><strong>可击杀</strong></td>
+<td>❌。</td>
+</tr>
+<tr>
+<td><strong>放弃机制</strong></td>
+<td>未知。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>进化版 Knifo。垂直跳跃(几层楼)。盯-冲模式。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="31-snail-spawner">31. Snail Spawner（蜗牛生成器）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性/攻击</strong></td>
+<td>非传统怪物——中途生成蜗牛。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>0.9B 更新与 Brain on a Stick 一起加入。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>第二个能中途生成敌人的(第一个是 Big Slap 通过画像)。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="32-shroomed-player">32. Shroomed Player（蘑菇感染者）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>拆解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>机动性/攻击</strong></td>
+<td>信息有限。似乎是蘑菇感染变形的玩家。</td>
+</tr>
+<tr>
+<td><strong>刷新</strong></td>
+<td>所有地图。</td>
+</tr>
+<tr>
+<td><strong>独特</strong></td>
+<td>玩家变形机制(可能就是你想到的"Plant")。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="4">未使用/半实现实体（4 只）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>名称</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>33</td>
+<td>Ghost（幽灵）</td>
+<td>无腿幽灵，透明。物体在其前模糊。游戏文件中存在，可 mod 召唤。<strong>怕光</strong>——手电照则捂眼飘走。</td>
+</tr>
+<tr>
+<td>34</td>
+<td>Slurper Hand（吸盘之手）</td>
+<td>状态未知。可 1–5 只。可能是 Slurper 爪的分离变体。</td>
+</tr>
+<tr>
+<td>35–38</td>
+<td>Toolkit Fan/Hammer/Iron/Vacuum</td>
+<td>工具主题怪物组。均未用。仅 Whisk 在正式版。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">四、三款游戏横向对比总结</h2>
+<h3 id="_3">感官机制对比</h3>
+<table>
+<thead>
+<tr>
+<th>感官类型</th>
+<th>Lethal Company 代表</th>
+<th>R.E.P.O. 代表</th>
+<th>Content Warning 代表</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>纯听觉</strong></td>
+<td>Eyeless Dog（盲）、Huntsman×5（盲）</td>
+<td>Huntsman（5×听力，盲）</td>
+<td>Ear（声吸引+声恐惧矛盾）、Arms（脚步声）</td>
+</tr>
+<tr>
+<td><strong>纯视觉</strong></td>
+<td>Thumper（聋）、Forest Keeper（聋）、Reaper（聋）</td>
+<td>Reaper（纯视觉，聋）</td>
+<td>Spider、Whisk、BarnacleBall</td>
+</tr>
+<tr>
+<td><strong>凝视机制（看它=安全）</strong></td>
+<td>Coil-Head（不被看才动）、Bracken（盯脸激怒）</td>
+<td>Shadow Child（看它触发）、Robe（看它激怒）</td>
+<td>Weeping（不被看才动）</td>
+</tr>
+<tr>
+<td><strong>反转凝视（看它=死）</strong></td>
+<td>—</td>
+<td>—</td>
+<td>Flicker（看它=全队秒杀）</td>
+</tr>
+<tr>
+<td><strong>全知</strong></td>
+<td>Bracken、Jester、Hygrodere</td>
+<td>Loom（穿墙感知目标）</td>
+<td>Big Slap（不放弃）</td>
+</tr>
+<tr>
+<td><strong>光敏</strong></td>
+<td>—</td>
+<td>Headman（手电激怒）</td>
+<td>EyeGuy（光触发）、Snatcho（光驱散）、Ghost（怕光）</td>
+</tr>
+<tr>
+<td><strong>声音反制</strong></td>
+<td>—</td>
+<td>—</td>
+<td>Ear（麦克风吹叫吓跑）</td>
+</tr>
+<tr>
+<td><strong>运动检测</strong></td>
+<td>Nutcracker（眼开检测移动）</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>接近/陷阱</strong></td>
+<td>Snare Flea（天花板）、Slurper（天花板爪）</td>
+<td>Peeper（天花板）、Slurper（天花板爪）</td>
+<td>Slurper（天花板爪）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">机动性对比</h3>
+<table>
+<thead>
+<tr>
+<th>机动类型</th>
+<th>Lethal Company</th>
+<th>R.E.P.O.</th>
+<th>Content Warning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>爬墙/天花板</strong></td>
+<td>Snare Flea（挂天花板）</td>
+<td>Upscream、Tick、Oogly（悬停）</td>
+<td>Slurper（天花板静止）</td>
+</tr>
+<tr>
+<td><strong>传送</strong></td>
+<td>Ghost Girl</td>
+<td>Shadow Child、Mentalist</td>
+<td>Mime（闪烁进出）</td>
+</tr>
+<tr>
+<td><strong>飞行</strong></td>
+<td>Baboon Hawk、Old Bird、Manticoil、Tulip Snake</td>
+<td>Spewer、Ducky（攻击态）、Oogly、Headman（漂浮）</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>地下/钻地</strong></td>
+<td>Earth Leviathan</td>
+<td>Heart Hugger</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>静止/陷阱</strong></td>
+<td>Snare Flea、Spore Lizard、Cadaver</td>
+<td>Peeper（天花板）</td>
+<td>Slurper、Angler、Robot Button</td>
+</tr>
+<tr>
+<td><strong>慢重型</strong></td>
+<td>Hygrodere、Bunker Spider</td>
+<td>Trudge、Robe（非暴怒）</td>
+<td>Puffo、Worm</td>
+</tr>
+<tr>
+<td><strong>直线快/拐弯差</strong></td>
+<td>Thumper</td>
+<td>—</td>
+<td>Whisk（直线冲锋）</td>
+</tr>
+<tr>
+<td><strong>节奏/节拍移动</strong></td>
+<td>Barber（鼓点跳跃）</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Weeping Angel 式</strong></td>
+<td>Coil-Head</td>
+<td>—</td>
+<td>Weeping</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">攻击方式对比</h3>
+<table>
+<thead>
+<tr>
+<th>攻击类型</th>
+<th>Lethal Company</th>
+<th>R.E.P.O.</th>
+<th>Content Warning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>秒杀/接触</strong></td>
+<td>Bracken、Coil-Head、Jester、Ghost Girl、Eyeless Dog、Forest Keeper、Earth Leviathan、Maneater、Masked、Barber</td>
+<td>Loom、Robe、Mime</td>
+<td>Big Slap、Mime、CamCreep、Angler、Flicker</td>
+</tr>
+<tr>
+<td><strong>DoT/吸血</strong></td>
+<td>Hygrodere、Snare Flea、Cadaver（感染）</td>
+<td>Peeper、Spewer</td>
+<td>Snail、Snatcho、Slurper、Ear</td>
+</tr>
+<tr>
+<td><strong>远程射击</strong></td>
+<td>Nutcracker（霰弹枪）、Old Bird（导弹）</td>
+<td>Huntsman（霰弹枪）、Clown（激光）</td>
+<td>Gundog（炮塔）、Clown（激光）、Fire Monster（火墙）</td>
+</tr>
+<tr>
+<td><strong>抓取/搬运/扔</strong></td>
+<td>Tulip Snake（带飞）、Masked（转化）</td>
+<td>Hidden（搬运）、Rugrat（扔贵重品）、Larva→Upscream（扔玩家）</td>
+<td>Larva（扔玩家）、Jello（搬运）、Worm（系绳）</td>
+</tr>
+<tr>
+<td><strong>自杀爆炸</strong></td>
+<td>—</td>
+<td>Banger</td>
+<td>Bombs（自爆）</td>
+</tr>
+<tr>
+<td><strong>AoE/真空</strong></td>
+<td>—</td>
+<td>Trudge（真空拉+砸）、Mentalist（反重力摔）</td>
+<td>BarnacleBall（涡流吸）</td>
+</tr>
+<tr>
+<td><strong>转化/变形</strong></td>
+<td>Masked（变面具人）、Cadaver（感染变花）、Maneater（幼→成）</td>
+<td>—</td>
+<td>Shroomed Player（蘑菇感染）、Streamer（采用受害者身份）</td>
+</tr>
+<tr>
+<td><strong>非致命/干扰</strong></td>
+<td>Tulip Snake（带飞无伤）、Spore Lizard（孢子云）</td>
+<td>Hidden（搬运无伤）、Jello→(同)</td>
+<td>Mouthe（尖叫聋化）、Jello（搬运）、Worm（系绳）、Doppelganger（拟态）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">仇恨机制对比</h3>
+<table>
+<thead>
+<tr>
+<th>仇恨类型</th>
+<th>Lethal Company</th>
+<th>R.E.P.O.</th>
+<th>Content Warning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>锁定一人</strong></td>
+<td>Ghost Girl（积分附身）、Maneater（幼体印随）</td>
+<td>Loom（选定目标穿墙追）</td>
+<td>CamCreep（只追摄像机者）、Streamer（采用身份）</td>
+</tr>
+<tr>
+<td><strong>群怪连锁</strong></td>
+<td>Eyeless Dog（嚎叫召同伴）、Baboon Hawk（通信系统）</td>
+<td>Banger（≥3 群）、Tick（3–5 群）、Upscream（2–3 群）</td>
+<td>Snail（3–5 群）、Snatcho（1–5 群）、Knifo（1–5 群）</td>
+</tr>
+<tr>
+<td><strong>领地/巢穴</strong></td>
+<td>Hoarding Bug（巢）、Bunker Spider（网）、Circuit Bee（蜂巢）、Giant Sapsucker（巢）、Kidnapper Fox（巢+击杀区）</td>
+<td>—</td>
+<td>Larva（领地）</td>
+</tr>
+<tr>
+<td><strong>落单针对</strong></td>
+<td>Butler（独处 12 秒→谋杀）</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>关注/互动驱动</strong></td>
+<td>—</td>
+<td>Elsa（忽略 15 秒→狂暴）</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>全图追杀</strong></td>
+<td>Jester（追杀态）、Ghost Girl</td>
+<td>—</td>
+<td>Big Slap（不放弃）</td>
+</tr>
+<tr>
+<td><strong>凝视触发</strong></td>
+<td>Bracken（盯脸→怒）、Coil-Head（不被看→动）</td>
+<td>Shadow Child（看它→jumpscare）、Robe（看它→怒）</td>
+<td>Weeping（不被看→动）、Flicker（看它→死）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">可击杀性对比</h3>
+<table>
+<thead>
+<tr>
+<th>游戏</th>
+<th>可杀比例</th>
+<th>杀法</th>
+<th>不可杀的应对</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Lethal Company</strong></td>
+<td>~50%（16/32）</td>
+<td>铲子/电击枪/双管/闪电/火/环境</td>
+<td>盯着/断视线/蹲走/离开区域/关门</td>
+</tr>
+<tr>
+<td><strong>R.E.P.O.</strong></td>
+<td>~90%（26/29）</td>
+<td>抓起摔墙/摔地/武器/推坑/提取点/引到环境陷阱</td>
+<td>眩晕/逃跑/躲家具/秦王绕柱</td>
+</tr>
+<tr>
+<td><strong>Content Warning</strong></td>
+<td>~0%（几乎全不可杀）</td>
+<td>仅 Bombs 可用电击棒打</td>
+<td>电击棒/黏液球/光驱散/麦克风吹叫/跑/躲</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_8">放弃机制对比</h3>
+<table>
+<thead>
+<tr>
+<th>放弃类型</th>
+<th>Lethal Company</th>
+<th>R.E.P.O.</th>
+<th>Content Warning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>断视线放弃</strong></td>
+<td>Thumper、Forest Keeper、Reaper</td>
+<td>Mentalist、Reaper、Clown（差物体恒常性）</td>
+<td>EyeGuy、Snatcho（光驱散）</td>
+</tr>
+<tr>
+<td><strong>计时放弃</strong></td>
+<td>Eyeless Dog（怀疑值超时）、Bracken（撤退 24 秒）</td>
+<td>Robe（3–4 分钟）、Peeper（断视线几秒）</td>
+<td>Knifo（10–30 秒无聊）</td>
+</tr>
+<tr>
+<td><strong>次数限制</strong></td>
+<td>—</td>
+<td>Upscream（3 次抓后逃）</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>不放弃</strong></td>
+<td>Coil-Head（盯着就不动）、Ghost Girl、Jester（追杀态）、Big Slap(CW)</td>
+<td>—</td>
+<td>Big Slap、Flicker（可避但不放弃）</td>
+</tr>
+<tr>
+<td><strong>区域限制</strong></td>
+<td>Jester（出设施）、Forest Keeper（进飞船）、Kidnapper Fox（关舌）</td>
+<td>Loom（穿墙但不放弃，需推坑）</td>
+<td>Fire Monster（高处 20–30 秒）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<blockquote>
+<p><strong>文档结束。</strong> 共拆解 Lethal Company 32 只 + R.E.P.O. 29 只 + Content Warning 32 只 = <strong>93 只怪物</strong>。</p>
+</blockquote>
+</div>
+
+<div class="footer">
+  Generated from monster-breakdown-LC-REPO-CW.md · 共 93 只怪物拆解
+</div>
+
+</body>
+</html>

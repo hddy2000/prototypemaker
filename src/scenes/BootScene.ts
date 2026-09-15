@@ -14,6 +14,7 @@ export class BootScene extends Phaser.Scene {
     this.load.audio('scream', 'assets/scream.mp3');    // 死亡跳脸音效
     this.load.image('pathghost', 'assets/pathghost.png');  // 小道瞬杀跳脸鬼图
     this.load.audio('pathlaugh', 'assets/pathlaugh.mp3');  // 小道瞬杀鬼笑声
+    this.load.audio('boxSmash', 'assets/audio/爆裂撞击.mp3');  // 砸盒碎裂音效
   }
 
   create() {
