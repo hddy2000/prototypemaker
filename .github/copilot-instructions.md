@@ -1,14 +1,17 @@
 # Prototype Maker - Game Development Environment
 
 ## Project Overview
+
 Phaser 3 + TypeScript + Vite game prototype development environment.
 
 ## Quick Commands
+
 - `npm run dev` - Start dev server (http://localhost:5173/)
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 
 ## Project Structure
+
 - `src/main.ts` - Game entry point and configuration
 - `src/scenes/` - Game scenes (BootScene, GameScene)
 - `index.html` - HTML entry point
@@ -16,12 +19,17 @@ Phaser 3 + TypeScript + Vite game prototype development environment.
 - `tsconfig.json` - TypeScript configuration
 
 ## Development Notes
+
 - Sample game includes arrow key movement and physics
 - No external assets required - uses programmatic graphics
 - Physics debug can be enabled in src/main.ts
 - Game canvas: 800x600 (configurable)
+- 箱子玩法规则：一个箱子只能被打开一次（砸开或解密）；`breakBox()` 开头必须 `if (box.isOpen) return`；解密（R键小游戏）奖励倍率高于砸开；小游戏难度按等级在 `BoxRarityConfig.decrypt` 中分级
+- 输入冷却用 `this.time.now` 时间戳，不要用「每帧减 delta」的计数器（非该状态时不递减会永久锁死）
+- Vite 对 `src/scenes/*.ts` 的改动会触发 **整页 reload**，改完再跑自动化测试
 
 ## Adding New Scenes
+
 **每次创建新场景前必须先阅读 `NEW_SCENE_GUIDE.md`**，然后严格按规则执行。
 
 1. Create new file in src/scenes/
@@ -37,10 +45,12 @@ Phaser 3 + TypeScript + Vite game prototype development environment.
 11. 键位约定：WASD移动、空格主动作、E交互、Shift冲刺、ESC菜单
 
 ## Architecture
+
 - BootScene → MenuScene (main menu) → individual prototype scenes
 - Every prototype scene must have a way to return to MenuScene (ESC key + visible button)
 
 ## Phaser 3.90 Known Issues
+
 - `RenderTexture.erase()` does NOT work in WebGL — use Canvas + manual `gl.texImage2D()` upload instead
 - `CanvasTexture.refresh()` and `TextureSource.update()` do NOT upload canvas data to WebGL texture — must manually call `gl.texImage2D()`
 - For fog of war: use HTMLCanvasElement with `destination-out` composite + manual WebGL texture upload
@@ -49,6 +59,7 @@ Phaser 3 + TypeScript + Vite game prototype development environment.
 - `textures.addCanvas()` warns "key already in use" on scene restart — call `textures.exists()` + `textures.remove()` before `addCanvas()`
 
 ## Multiplayer Performance Patterns
+
 - Server `setPatchRate(50)` = 20Hz broadcast. Client MUST interpolate remote entities (players, monsters) with `Phaser.Math.Linear(current, target, 0.2)` in `update()` — do NOT `setPosition()` directly in `onChange`
 - `onChange` callbacks: store `targetX/targetY` only; do actual position update in `update()` via lerp
 - Local player: snap directly to server position (server echoes our input, no jitter)

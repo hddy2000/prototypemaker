@@ -29,6 +29,7 @@ import { TrapGambleScene } from './scenes/TrapGambleScene';
 import { InfectionTagScene } from './scenes/InfectionTagScene';
 import { BlindBoxCasinoScene } from './scenes/BlindBoxCasinoScene';
 import { BoxSmashScene } from './scenes/BoxSmashScene';
+import { BoxHorrorScene } from './scenes/BoxHorrorScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -47,7 +48,40 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene, RitualRoomsScene, TrapHunterScene, NameTagScene, StealScene, MidnightGambleScene, AbyssHotelScene, CleanupEvacScene, BlindBoxHorrorScene, CleanupMultiplayerScene, BlindBoxMultiplayerScene, AltarCleanupScene, StoneGambleScene, RuneGambleScene, TrapGambleScene, InfectionTagScene, BlindBoxCasinoScene, BoxSmashScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene, RitualRoomsScene, TrapHunterScene, NameTagScene, StealScene, MidnightGambleScene, AbyssHotelScene, CleanupEvacScene, BlindBoxHorrorScene, CleanupMultiplayerScene, BlindBoxMultiplayerScene, AltarCleanupScene, StoneGambleScene, RuneGambleScene, TrapGambleScene, InfectionTagScene, BlindBoxCasinoScene, BoxSmashScene, BoxHorrorScene],
 };
 
-(window as any).game = new Phaser.Game(config);
+const game = new Phaser.Game(config);
+(window as any).game = game;
+
+// ─── URL hash ↔ 场景 保持一致 ─────────────────────────────────
+// 之前只改地址栏的 #XxxScene 不会重新加载页面，导致「网址显示 A、实际跑的是 B」。
+// 这里监听 hashchange，手动改地址栏 / 前进后退 / 粘贴链接都能正确切换场景。
+function sceneKeyFromHash(): string {
+  return location.hash.replace(/^#\/?/, '');
+}
+
+window.addEventListener('hashchange', () => {
+  // 稍作延迟：让游戏自身的 scene.start() 先落地，避免重复启动
+  setTimeout(() => {
+    const key = sceneKeyFromHash();
+    if (!key || key === 'BootScene') return;
+    if (!game.scene.keys[key]) return;          // 未注册的场景名，忽略
+
+    if (game.scene.isActive(key)) return;       // 已经在跑目标场景，无需处理
+
+    const active = game.scene.getScenes(true);  // 当前正在运行的场景
+    if (active.length === 0) return;            // 还没启动完成，交给正常流程
+
+    if (key === 'MenuScene') {
+      active.forEach(s => game.scene.stop(s.scene.key));
+      game.scene.start('MenuScene');
+      return;
+    }
+
+    active.forEach(s => {
+      if (s.scene.key !== key) game.scene.stop(s.scene.key);
+    });
+    game.scene.start(key);
+  }, 60);
+});
