@@ -29,6 +29,7 @@ import { TrapGambleScene } from './scenes/TrapGambleScene';
 import { InfectionTagScene } from './scenes/InfectionTagScene';
 import { BlindBoxCasinoScene } from './scenes/BlindBoxCasinoScene';
 import { BoxSmashScene } from './scenes/BoxSmashScene';
+import { BoxHeistScene } from './scenes/BoxHeistScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -47,7 +48,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene, RitualRoomsScene, TrapHunterScene, NameTagScene, StealScene, MidnightGambleScene, AbyssHotelScene, CleanupEvacScene, BlindBoxHorrorScene, CleanupMultiplayerScene, BlindBoxMultiplayerScene, AltarCleanupScene, StoneGambleScene, RuneGambleScene, TrapGambleScene, InfectionTagScene, BlindBoxCasinoScene, BoxSmashScene],
+  scene: [BootScene, MenuScene, MazeScene, EscortScene, TowerDefenseScene, HauntedMansionScene, CleanupScene, ConvoyScene, EcholocationScene, GreedCurseScene, MultiplayerScene, DeathmatchScene, PinballScene, RitualRoomsScene, TrapHunterScene, NameTagScene, StealScene, MidnightGambleScene, AbyssHotelScene, CleanupEvacScene, BlindBoxHorrorScene, CleanupMultiplayerScene, BlindBoxMultiplayerScene, AltarCleanupScene, StoneGambleScene, RuneGambleScene, TrapGambleScene, InfectionTagScene, BlindBoxCasinoScene, BoxSmashScene, BoxHeistScene],
 };
 
 (window as any).game = new Phaser.Game(config);
