@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+﻿import Phaser from 'phaser';
 
 interface PrototypeItem {
   key: string;
@@ -145,8 +145,13 @@ export class MenuScene extends Phaser.Scene {
     },
     {
       key: 'BoxSmashScene',
-      name: '砸盒惊魂',
-      description: '黑暗废弃建筑中散落着神秘盒子！砸盒子→捡物品→到商店卖货→达到配额后回入口撤离！普通/稀有/超稀有三档盒子，价值10~1000！左键捡/敲 | 右键扔 | Q放下 | E卖货/撤离 | 1234切换背包 | Shift疾跑 | ESC菜单',
+      name: '砸盒惊魂(旧·无解密)',
+      description: '【没有解密小游戏】黑暗废弃建筑中散落着神秘盒子！砸盒子→捡物品→到商店卖货→配额撤离。左键捡/敲 | 右键扔 | Q放下 | E卖货/撤离 | 1234切换背包 | Shift疾跑 | ESC菜单',
+    },
+    {
+      key: 'BoxHorrorScene',
+      name: '开盒惊魂(新·R解密)',
+      description: '【含 R/空格 解密小游戏】手持箱子按 R/空格/点头顶气泡进入解密：锁定指针命中绿色区开箱，奖励更高(普通×1.5 稀有×1.8 超稀有×2.2)，一个箱子只能开一次。左键捡/砸 | 右键扔 | Q放下 | E卖货/撤离 | 1234切换 | Shift疾跑 | ESC菜单',
     },
     {
       key: 'BoxHeistScene',
@@ -157,6 +162,7 @@ export class MenuScene extends Phaser.Scene {
   ];
 
   private selectedIndex = 0;
+  private introOpen = false;   // 介绍浮层已打开：屏蔽正式菜单的 Enter 处理（两者共用同一个 Enter 键对象）
   private gridCells: Phaser.GameObjects.Container[] = [];
 
   // Grid layout constants
@@ -172,6 +178,7 @@ export class MenuScene extends Phaser.Scene {
     // Clear stale references from previous scene instance (scene.restart/start reuses the same object)
     this.gridCells = [];
     this.selectedIndex = 0;
+    this.introOpen = false;
 
     // 回菜单时清除 hash
     if (location.hash) location.hash = '';
@@ -244,6 +251,8 @@ export class MenuScene extends Phaser.Scene {
           this.showEcholocationIntro();
         } else if (proto.key === 'GreedCurseScene') {
           this.showGreedCurseIntro();
+        } else if (proto.key === 'BoxHorrorScene') {
+          this.showBoxHorrorIntro();
         } else {
           this.launchScene(proto.key);
         }
@@ -267,6 +276,7 @@ export class MenuScene extends Phaser.Scene {
     const enterKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
     enterKey.on('down', () => {
+      if (this.introOpen) return;   // 浮层打开时交给浮层自己的 Enter 处理
       const proto = this.prototypes[this.selectedIndex];
       if (proto.key === 'CleanupScene') {
         this.showCleanupIntro();
@@ -274,6 +284,8 @@ export class MenuScene extends Phaser.Scene {
         this.showEcholocationIntro();
       } else if (proto.key === 'GreedCurseScene') {
         this.showGreedCurseIntro();
+      } else if (proto.key === 'BoxHorrorScene') {
+        this.showBoxHorrorIntro();
       } else {
         this.launchScene(proto.key);
       }
@@ -337,6 +349,8 @@ export class MenuScene extends Phaser.Scene {
 
   /** 末班地铁说明页：按Enter进入游戏 */
   private showCleanupIntro() {
+    if (this.introOpen) return;
+    this.introOpen = true;
     // 半透明遮罩
     const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.85);
     overlay.setDepth(100);
@@ -389,6 +403,7 @@ export class MenuScene extends Phaser.Scene {
       panel.destroy();
       texts.forEach(t => t.destroy());
       enterListener.removeListener('down', handler);
+      this.introOpen = false;
       this.launchScene('CleanupScene');
     };
     enterListener.on('down', handler);
@@ -396,6 +411,8 @@ export class MenuScene extends Phaser.Scene {
 
   /** 回声定位说明页：按Enter进入游戏 */
   private showEcholocationIntro() {
+    if (this.introOpen) return;
+    this.introOpen = true;
     const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.85);
     overlay.setDepth(100);
 
@@ -445,6 +462,7 @@ export class MenuScene extends Phaser.Scene {
       panel.destroy();
       texts.forEach(t => t.destroy());
       enterListener.removeListener('down', handler);
+      this.introOpen = false;
       this.launchScene('EcholocationScene');
     };
     enterListener.on('down', handler);
@@ -452,6 +470,8 @@ export class MenuScene extends Phaser.Scene {
 
   /** 贪婪诅咒说明页：按Enter进入游戏 */
   private showGreedCurseIntro() {
+    if (this.introOpen) return;
+    this.introOpen = true;
     const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.85);
     overlay.setDepth(100);
 
@@ -504,7 +524,75 @@ export class MenuScene extends Phaser.Scene {
       panel.destroy();
       texts.forEach(t => t.destroy());
       enterListener.removeListener('down', handler);
+      this.introOpen = false;
       this.launchScene('GreedCurseScene');
+    };
+    enterListener.on('down', handler);
+  }
+
+  /** 开盒惊魂说明页：按Enter进入游戏 */
+  private showBoxHorrorIntro() {
+    if (this.introOpen) return;
+    this.introOpen = true;
+    const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.85);
+    overlay.setDepth(100);
+
+    const panel = this.add.rectangle(400, 300, 720, 520, 0x111122, 0.95);
+    panel.setStrokeStyle(2, 0x886622, 1);
+    panel.setDepth(101);
+
+    const texts: Phaser.GameObjects.Text[] = [];
+    const mkText = (y: number, text: string, style: Phaser.Types.GameObjects.Text.TextStyle) => {
+      const t = this.add.text(400, y, text, style).setOrigin(0.5).setDepth(102);
+      texts.push(t);
+      return t;
+    };
+
+    mkText(70, '📦 开盒惊魂', { fontSize: '32px', color: '#ffaa00', fontStyle: 'bold' });
+    mkText(100, '黑暗废弃建筑中散落着神秘盒子！开盒→捡货→卖货→撤离！', { fontSize: '14px', color: '#888888' });
+
+    mkText(125, '🎮 操作', { fontSize: '18px', color: '#44ddff', fontStyle: 'bold' });
+    mkText(150, 'WASD移动 • 左键拾取/敲盒 • 右键扔盒 • R解密 • Q放下 • E商店/撤离', { fontSize: '13px', color: '#cccccc' });
+    mkText(168, '1234切换背包格 • Shift疾跑 • ESC菜单', { fontSize: '13px', color: '#cccccc' });
+
+    mkText(200, '⚙️ 核心机制：盒子三档稀有度', { fontSize: '18px', color: '#44ddff', fontStyle: 'bold' });
+    mkText(228, '🟤 普通(棕)：3HP，价值10~50，占60%', { fontSize: '13px', color: '#aa8a5a' });
+    mkText(248, '🔵 稀有(蓝)：5HP，价值100~300，占30%', { fontSize: '13px', color: '#66aaff' });
+    mkText(268, '🟣 超稀有(紫)：8HP，价值500~1000，占10%', { fontSize: '13px', color: '#ff88ff' });
+
+    mkText(300, '🔨 开盒流程（一个箱子只能开一次）', { fontSize: '16px', color: '#ffaa00', fontStyle: 'bold' });
+    mkText(320, '左键敲盒(消耗HP)→箱子碎裂→物品掉地上→左键拾取进背包（掉落价值打折 ×0.5~0.8）', { fontSize: '12px', color: '#cccccc' });
+    mkText(336, '手持箱子按 R / 空格 → 进入解密小游戏：按 R/空格/鼠标左键把指针锁进绿色区，全部密码段命中即开箱', { fontSize: '12px', color: '#cccccc' });
+    mkText(352, '解密奖励更高：普通×1.5 / 稀有×1.8 / 超稀有×2.2（等级越高：段数越多、命中区越窄、指针越快、容错越低）', { fontSize: '12px', color: '#88dd88' });
+    mkText(368, '解密失误超限 = 箱子受损(HP-1)，耐久归零只能当砸开的低价处理', { fontSize: '12px', color: '#ff8888' });
+    mkText(384, '背包4格(1234切换)，右键可扔出手持物品，Q放下物品', { fontSize: '12px', color: '#cccccc' });
+
+    mkText(408, '🏪 商店与撤离', { fontSize: '16px', color: '#44ff44', fontStyle: 'bold' });
+    mkText(430, '走到商店旁按E卖货，将背包物品变现计分', { fontSize: '13px', color: '#cccccc' });
+    mkText(450, '达到配额后回入口按E撤离通关', { fontSize: '13px', color: '#cccccc' });
+
+    mkText(475, '🚪 撤离模式', { fontSize: '16px', color: '#ffcc00', fontStyle: 'bold' });
+    mkText(497, '进入游戏后可选择：配额撤离 | 限时撤离 | 商店撤离 | 投掷变现', { fontSize: '13px', color: '#cccccc' });
+    mkText(515, '不同模式撤离条件不同，限时模式超时=死亡！', { fontSize: '13px', color: '#ff6666' });
+
+    const prompt = mkText(548, '按 Enter 进入游戏', { fontSize: '18px', color: '#ffffff', backgroundColor: '#554422', padding: { x: 20, y: 8 } });
+
+    this.tweens.add({
+      targets: prompt,
+      alpha: { from: 1, to: 0.4 },
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+    });
+
+    const enterListener = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    const handler = () => {
+      overlay.destroy();
+      panel.destroy();
+      texts.forEach(t => t.destroy());
+      enterListener.removeListener('down', handler);
+      this.introOpen = false;
+      this.launchScene('BoxHorrorScene');
     };
     enterListener.on('down', handler);
   }

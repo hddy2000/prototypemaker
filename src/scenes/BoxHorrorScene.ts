@@ -11,6 +11,17 @@ interface Obstacle {
 
 type BoxRarity = 'normal' | 'rare' | 'super_rare';
 
+// 解密小游戏难度配置（等级越高：密码段越多、命中区越窄、指针越快、容错越低）
+interface DecryptDifficulty {
+  segments: number;      // 密码段数（需要连续锁定的次数）
+  targetSize: number;    // 命中区宽度，0~1 的比例
+  speed: number;         // 指针速度（每秒走完多少比例）
+  maxMisses: number;     // 允许失误次数
+  timeLimit: number;     // 每段限时（秒），0 = 不限时
+  rewardMult: number;    // 解密成功时的价值倍率（砸开只有 0.5~0.8）
+  panelColor: number;    // 面板主色调
+}
+
 interface BoxRarityConfig {
   name: string;
   color: number;
@@ -20,12 +31,25 @@ interface BoxRarityConfig {
   weight: number;
   valueRange: [number, number];
   glowColor: number;
+  decrypt: DecryptDifficulty;
 }
 
 const BOX_RARITIES: BoxRarityConfig[] = [
-  { name: '普通', color: 0x8a6a3a, borderColor: 0xaa8a5a, size: 26, maxHp: 3, weight: 60, valueRange: [10, 50], glowColor: 0x665533 },
-  { name: '稀有', color: 0x4488ff, borderColor: 0x66aaff, size: 30, maxHp: 5, weight: 30, valueRange: [100, 300], glowColor: 0x3366cc },
-  { name: '超稀有', color: 0xff44ff, borderColor: 0xff88ff, size: 34, maxHp: 8, weight: 10, valueRange: [500, 1000], glowColor: 0xcc33cc },
+  {
+    name: '普通', color: 0x8a6a3a, borderColor: 0xaa8a5a, size: 26, maxHp: 3, weight: 60,
+    valueRange: [10, 50], glowColor: 0x665533,
+    decrypt: { segments: 2, targetSize: 0.26, speed: 0.75, maxMisses: 2, timeLimit: 0, rewardMult: 1.5, panelColor: 0xaa8a5a },
+  },
+  {
+    name: '稀有', color: 0x4488ff, borderColor: 0x66aaff, size: 30, maxHp: 5, weight: 30,
+    valueRange: [100, 300], glowColor: 0x3366cc,
+    decrypt: { segments: 3, targetSize: 0.16, speed: 1.15, maxMisses: 2, timeLimit: 3.0, rewardMult: 1.8, panelColor: 0x66aaff },
+  },
+  {
+    name: '超稀有', color: 0xff44ff, borderColor: 0xff88ff, size: 34, maxHp: 8, weight: 10,
+    valueRange: [500, 1000], glowColor: 0xcc33cc,
+    decrypt: { segments: 4, targetSize: 0.11, speed: 1.7, maxMisses: 1, timeLimit: 2.2, rewardMult: 2.2, panelColor: 0xff88ff },
+  },
 ];
 
 const BOX_RARITY_TOTAL_WEIGHT = BOX_RARITIES.reduce((s, r) => s + r.weight, 0);
@@ -92,6 +116,9 @@ const EXTRACTION_RANGE = 50;
 const SHOP_COUNT = 3;
 const TIMED_DURATION = 180; // 限时模式时长（秒）
 
+// 版本标记：显示在界面上，用于一眼判断浏览器里跑的是不是最新代码（旧缓存排查用）
+const BUILD_TAG = 'v2 · R/空格解密';
+
 // ─── Extraction modes (撤离模式) ───────────────────────────
 
 type ExtractionMode = 'shop_quota' | 'timed' | 'timed_shop' | 'shop_throw' | 'ghost' | 'multi_point';
@@ -107,7 +134,7 @@ interface ExtractionModeDef {
 
 // ─── Scene ────────────────────────────────────────────────────
 
-export class BoxSmashScene extends Phaser.Scene {
+export class BoxHorrorScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Arc;
   private playerShadow!: Phaser.GameObjects.Ellipse;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -116,6 +143,32 @@ export class BoxSmashScene extends Phaser.Scene {
   private shiftKey!: Phaser.Input.Keyboard.Key;
   private eKey!: Phaser.Input.Keyboard.Key;
   private fKey!: Phaser.Input.Keyboard.Key;
+
+  // Decryption minigame state (R键解密)
+  private isDecrypting = false;
+  private decryptBox: GameBox | null = null;
+  private decryptPointer = 0;
+  private decryptDir = 1;
+  private decryptSpeed = 0.8;
+  private decryptTargetStart = 0;
+  private decryptTargetEnd = 0;
+  private decryptSegment = 0;              // 当前密码段（0-based）
+  private decryptTotalSegments = 0;
+  private decryptMisses = 0;
+  private decryptMaxMisses = 2;
+  private decryptRewardMult = 1.5;
+  private decryptSegmentTime = 0;          // 当前段剩余时间（秒），0 = 不限时
+  private decryptTimeLimit = 0;
+  private decryptTargetSize = 0.25;        // 当前箱子的命中区宽度
+  private decryptPanelColor = 0xffffff;    // 当前箱子的面板配色
+  private decryptInputLockUntil = 0;      // 输入冷却截止时间（this.time.now，毫秒），防止一次按键触发两次
+  private decryptPanel: Phaser.GameObjects.Container | null = null;
+  private decryptBar: Phaser.GameObjects.Graphics | null = null;
+  private decryptInfoText: Phaser.GameObjects.Text | null = null;
+  private decryptStatusText: Phaser.GameObjects.Text | null = null;
+  // 原生按键兜底（解决输入法吞键 / 非 QWERTY 布局 keyCode 不是 82 的情况）
+  private _nativeKeyDown: ((e: KeyboardEvent) => void) | null = null;
+  private imeWarned = false;
 
   // Map
   private mapWidth = 2400;
@@ -130,7 +183,7 @@ export class BoxSmashScene extends Phaser.Scene {
   private fogImage!: Phaser.GameObjects.Image;
   private fogCanvas!: HTMLCanvasElement;
   private fogCtx!: CanvasRenderingContext2D;
-  private fogTextureKey = 'boxSmashFog';
+  private fogTextureKey = 'boxHorrorFog';
   private viewRadius = 200;
   private screenW = 800;
   private screenH = 600;
@@ -168,6 +221,7 @@ export class BoxSmashScene extends Phaser.Scene {
   private heldText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
+  private heldHintText!: Phaser.GameObjects.Text;
   private boxCountText!: Phaser.GameObjects.Text;
   private quotaText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
@@ -197,7 +251,7 @@ export class BoxSmashScene extends Phaser.Scene {
   private selectContainer!: Phaser.GameObjects.Container;
 
   constructor() {
-    super({ key: 'BoxSmashScene' });
+    super({ key: 'BoxHorrorScene' });
   }
 
   create() {
@@ -242,6 +296,23 @@ export class BoxSmashScene extends Phaser.Scene {
     this.timedWarned30 = false;
     this.timedWarned10 = false;
     this.gameState = 'select';
+    this.isDecrypting = false;
+    this.decryptBox = null;
+    this.decryptPointer = 0;
+    this.decryptDir = 1;
+    this.decryptSegment = 0;
+    this.decryptTotalSegments = 0;
+    this.decryptMisses = 0;
+    this.decryptSegmentTime = 0;
+    this.decryptInputLockUntil = 0;
+    this.imeWarned = false;
+    if (this.decryptPanel) {
+      this.decryptPanel.destroy();
+      this.decryptPanel = null;
+    }
+    this.decryptBar = null;
+    this.decryptInfoText = null;
+    this.decryptStatusText = null;
   }
 
   // ─── Mode Selection (撤离模式选择) ─────────────────────────
@@ -258,12 +329,12 @@ export class BoxSmashScene extends Phaser.Scene {
     bg.setOrigin(0, 0);
     this.selectContainer.add(bg);
 
-    const title = this.add.text(this.screenW / 2, 55, '📦 砸盒惊魂（旧版·无解密）', {
+    const title = this.add.text(this.screenW / 2, 55, '📦 开盒惊魂', {
       fontSize: '32px', color: '#ffaa00', fontStyle: 'bold',
     }).setOrigin(0.5);
     this.selectContainer.add(title);
 
-    const subtitle = this.add.text(this.screenW / 2, 95, '选择撤离方式 — 砸盒子捡物品，想办法安全撤离！', {
+    const subtitle = this.add.text(this.screenW / 2, 95, '开箱子捡物品 → 卖货撤离 ｜ 手持箱子按 R/空格 解密，奖励更高！', {
       fontSize: '15px', color: '#aaaaaa',
     }).setOrigin(0.5);
     this.selectContainer.add(subtitle);
@@ -274,7 +345,7 @@ export class BoxSmashScene extends Phaser.Scene {
         name: '商店配额撤离',
         icon: '🏪',
         color: 0x44aa44,
-        desc: '砸盒子捡物品 → 到商店卖货\n达到配额后回入口撤离',
+        desc: '开箱子捡物品 → 到商店卖货\n达到配额后回入口撤离',
         available: true,
       },
       {
@@ -282,7 +353,7 @@ export class BoxSmashScene extends Phaser.Scene {
         name: '限时撤离',
         icon: '⏱',
         color: 0x4488ff,
-        desc: `${TIMED_DURATION}秒倒计时！砸盒卖货赚多少算多少\n倒计时结束前必须回到入口，否则死亡！`,
+        desc: `${TIMED_DURATION}秒倒计时！开箱卖货赚多少算多少\n倒计时结束前必须回到入口，否则死亡！`,
         available: true,
       },
       {
@@ -290,7 +361,7 @@ export class BoxSmashScene extends Phaser.Scene {
         name: '限时·商店撤离',
         icon: '🏪',
         color: 0x00cccc,
-        desc: `${TIMED_DURATION}秒倒计时！砸盒卖货赚多少算多少\n任意商店都能直接撤离，不用跑回入口！`,
+        desc: `${TIMED_DURATION}秒倒计时！开箱卖货赚多少算多少\n任意商店都能直接撤离，不用跑回入口！`,
         available: true,
       },
       {
@@ -298,7 +369,7 @@ export class BoxSmashScene extends Phaser.Scene {
         name: '商店投掷变现',
         icon: '🎯',
         color: 0xffcc00,
-        desc: '砸盒子捡物品 → 直接扔进商店变现！\n达到配额后回入口撤离，扔准点！',
+        desc: '开箱子捡物品 → 直接扔进商店变现！\n达到配额后回入口撤离，扔准点！',
         available: true,
       },
       {
@@ -362,7 +433,7 @@ export class BoxSmashScene extends Phaser.Scene {
       this.selectContainer.add(container);
     });
 
-    const hint = this.add.text(this.screenW / 2, 560, '点击选择撤离方式开始游戏 | ESC 返回菜单', {
+    const hint = this.add.text(this.screenW / 2, 560, `点击选择撤离方式开始游戏 | ESC 返回菜单 | ${BUILD_TAG}`, {
       fontSize: '14px', color: '#666666',
     }).setOrigin(0.5);
     this.selectContainer.add(hint);
@@ -397,14 +468,14 @@ export class BoxSmashScene extends Phaser.Scene {
       this.quotaText.setVisible(false);
       this.timerText.setVisible(true);
       if (this.extractionMode === 'timed_shop') {
-        this.showMessage('⏱ 限时·商店撤离\n\n' + TIMED_DURATION + '秒倒计时开始！\n砸盒子 → 捡物品 → 商店卖货\n赚多少算多少，任意商店可撤离！\n⚠️ 倒计时结束前到不了任何商店 = 死亡！\n\nE = 商店卖货 | F = 商店撤离\n左键捡/敲 | 右键扔 | Q放下', 6000);
+        this.showMessage('⏱ 限时·商店撤离\n\n' + TIMED_DURATION + '秒倒计时开始！\n开箱子 → 捡物品 → 商店卖货\n赚多少算多少，任意商店可撤离！\n⚠️ 倒计时结束前到不了任何商店 = 死亡！\n\nE = 商店卖货 | F = 商店撤离\n左键捡/砸 | R/空格 解密 | 右键扔 | Q放下', 6000);
       } else {
-        this.showMessage('⏱ 限时撤离\n\n' + TIMED_DURATION + '秒倒计时开始！\n砸盒子 → 捡物品 → 商店卖货\n赚多少算多少，随时可回入口撤离\n⚠️ 倒计时结束前回不了入口 = 死亡！\n\n左键捡/敲 | 右键扔 | Q放下 | E卖货/撤离', 6000);
+        this.showMessage('⏱ 限时撤离\n\n' + TIMED_DURATION + '秒倒计时开始！\n开箱子 → 捡物品 → 商店卖货\n赚多少算多少，随时可回入口撤离\n⚠️ 倒计时结束前回不了入口 = 死亡！\n\n左键捡/砸 | R/空格 解密 | 右键扔 | Q放下 | E卖货/撤离', 6000);
       }
     } else if (this.extractionMode === 'shop_throw') {
-      this.showMessage('🎯 商店投掷变现\n\n砸盒子 → 捡物品 → 右键扔进商店变现！\n物品飞进商店范围 = 直接变现\n达到配额后回入口撤离！\n\n左键捡/敲 | 右键扔 | Q放下 | E入口撤离', 6000);
+      this.showMessage('🎯 商店投掷变现\n\n开箱子 → 捡物品 → 右键扔进商店变现！\n物品飞进商店范围 = 直接变现\n达到配额后回入口撤离！\n\n左键捡/砸 | R/空格 解密 | 右键扔 | Q放下 | E入口撤离', 6000);
     } else {
-      this.showMessage('📦 砸盒惊魂（旧版·无解密） — ' + this.getModeName() + '\n\n砸盒子 → 捡物品 → 到商店卖货\n达到配额后回入口撤离！\n\n左键 = 捡起/敲击 | 右键 = 扔出 | Q = 放下\nE = 商店卖货/入口撤离 | 1234 = 切换背包\n\nShift 疾跑 | ESC 返回菜单', 6000);
+      this.showMessage('📦 开盒惊魂 — ' + this.getModeName() + '\n\n开箱子 → 捡物品 → 到商店卖货\n达到配额后回入口撤离！\n\n左键 = 捡起/砸开 | 右键 = 扔出 | Q = 放下\n手持箱子时按 R（或空格/鼠标点头顶气泡）= 进入解密小游戏\n（奖励更高，箱子等级越高越难）\nE = 商店卖货/入口撤离 | 1234 = 切换背包\n\nShift 疾跑 | ESC 返回菜单', 7000);
     }
   }
 
@@ -1022,6 +1093,21 @@ export class BoxSmashScene extends Phaser.Scene {
       padding: { x: 16, y: 8 }, align: 'center',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setVisible(false);
 
+    // 手持箱子时跟随玩家的「R 解密」气泡提示（世界坐标，可点击 = 兼容输入法吞键/键盘异常）
+    this.heldHintText = this.add.text(0, 0, '', {
+      fontSize: '13px', color: '#ffee44', backgroundColor: '#000000',
+      padding: { x: 5, y: 2 },
+    }).setOrigin(0.5).setDepth(9).setVisible(false);
+    this.heldHintText.setInteractive({ useHandCursor: true });
+    this.heldHintText.on('pointerover', () => this.heldHintText.setColor('#ffffff'));
+    this.heldHintText.on('pointerout', () => this.heldHintText.setColor('#ffee44'));
+    this.heldHintText.on('pointerdown', (
+      _p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData,
+    ) => {
+      ev.stopPropagation();          // 阻止场景的 pointerdown（否则会被当成"砸开箱子"）
+      this.handleDecryptKey();
+    });
+
     // 背包格子 UI
     const slotSize = 44;
     const slotGap = 4;
@@ -1051,7 +1137,7 @@ export class BoxSmashScene extends Phaser.Scene {
       this.inventorySlotTexts.push(itemText);
     }
 
-    this.add.text(400, 585, 'WASD 移动 | 左键捡/敲 | 右键扔 | Q 放下 | E 卖货/撤离 | 1234 切换 | Shift 疾跑 | ESC 菜单', {
+    this.add.text(400, 585, `WASD 移动 | 左键捡/砸 | 右键扔 | R/空格 解密（奖励更高） | Q 放下 | E 卖货/撤离 | 1234 切换 | Shift 疾跑 | ESC 菜单 | ${BUILD_TAG}`, {
       fontSize: '12px', color: '#666666',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
   }
@@ -1202,7 +1288,8 @@ export class BoxSmashScene extends Phaser.Scene {
 
     // 手持盒子
     if (this.heldBox) {
-      hint = `左键=敲盒子(${this.heldBox.hp}/${this.heldBox.maxHp}) | 右键=扔出 | Q=放下`;
+      const cfg = this.getRarityConfig(this.heldBox.rarity);
+      hint = `[左键] 砸开(${this.heldBox.hp}/${this.heldBox.maxHp}) | [R]/[空格] 解密 奖励×${cfg.decrypt.rewardMult} | [右键] 扔出 | [Q] 放下`;
     }
 
     // 手持物品
@@ -1236,22 +1323,67 @@ export class BoxSmashScene extends Phaser.Scene {
     this.shiftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
     this.eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.fKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
+    // addKey 仅为抑制键盘长按的自动重复（key.isDown 时不再派发 keydown-R）
+    this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+
+    // R = 手持箱子时进入解密小游戏 / 解密过程中锁定指针（主路径）
+    this.input.keyboard!.on('keydown-R', () => {
+      this.handleDecryptKey();
+    });
+
+    // 空格 = 备用键：有些浏览器扩展/输入法会单独劫持 R 键，用空格一样能解密
+    this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.input.keyboard!.on('keydown-SPACE', () => {
+      this.handleDecryptKey();
+    });
+
+    // 兜底路径：
+    // 1) 中文输入法在 Chrome 里会把字母键变成 keyCode 229（Process）→ Phaser 收不到 keydown-R
+    // 2) 非 QWERTY 布局（Colemak 等）按下标着 R 的键，keyCode 也不是 82
+    // 这里按「字符 key」兜底，并在检测到输入法吞键时给出提示
+    if (this._nativeKeyDown) window.removeEventListener('keydown', this._nativeKeyDown);
+    this._nativeKeyDown = (event: KeyboardEvent) => {
+      if (this.gameState !== 'playing') return;
+
+      // 输入法吞键：keyCode 229 / 正在组成中
+      if (event.keyCode === 229 || event.isComposing) {
+        this.warnImeOnce();
+        return;
+      }
+      if (event.keyCode === 82) return;   // 正常 R，交给 Phaser 主路径，避免重复触发
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      if (event.key && event.key.toLowerCase() === 'r') {
+        this.handleDecryptKey();
+      }
+    };
+    window.addEventListener('keydown', this._nativeKeyDown);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this._nativeKeyDown) window.removeEventListener('keydown', this._nativeKeyDown);
+    });
 
     this.input.mouse?.disableContextMenu();
 
     // 1234 = 切换背包物品到手上
-    this.input.keyboard!.on('keydown-ONE', () => this.swapInventorySlot(0));
-    this.input.keyboard!.on('keydown-TWO', () => this.swapInventorySlot(1));
-    this.input.keyboard!.on('keydown-THREE', () => this.swapInventorySlot(2));
-    this.input.keyboard!.on('keydown-FOUR', () => this.swapInventorySlot(3));
+    this.input.keyboard!.on('keydown-ONE', () => { if (!this.isDecrypting) this.swapInventorySlot(0); });
+    this.input.keyboard!.on('keydown-TWO', () => { if (!this.isDecrypting) this.swapInventorySlot(1); });
+    this.input.keyboard!.on('keydown-THREE', () => { if (!this.isDecrypting) this.swapInventorySlot(2); });
+    this.input.keyboard!.on('keydown-FOUR', () => { if (!this.isDecrypting) this.swapInventorySlot(3); });
 
     // Q = 轻轻放下手持物品/盒子
-    this.input.keyboard!.on('keydown-Q', () => this.dropHeld());
+    this.input.keyboard!.on('keydown-Q', () => { if (!this.isDecrypting) this.dropHeld(); });
+
+
 
     // 左键 = 捡起（手上空时）/ 敲击手持盒子
     // 右键 = 扔出盒子/物品
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.isDead || this.isEscaped) return;
+
+      // 解密中：左键 = 锁定指针（和 R 等效，方便操作）
+      if (this.isDecrypting) {
+        if (pointer.leftButtonDown()) this.handleDecryptKey();
+        return;
+      }
 
       if (pointer.leftButtonDown()) {
         if (this.heldBox) {
@@ -1284,6 +1416,15 @@ export class BoxSmashScene extends Phaser.Scene {
     }
     if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
       this.scene.start('MenuScene');
+      return;
+    }
+
+    // 解密小游戏：指针移动 + 每段限时（此时冻结其他玩法逻辑）
+    if (this.isDecrypting) {
+      this.updateDecrypt(delta);
+      this.fogThrottle += delta;
+      if (this.fogThrottle >= 33) { this.fogThrottle = 0; this.updateFog(); }
+      this.updateHeldPosition();
       return;
     }
 
@@ -1337,6 +1478,7 @@ export class BoxSmashScene extends Phaser.Scene {
   // ─── Player movement ─────────────────────────────────────────
 
   private handlePlayerMovement(delta: number) {
+    if (this.isDecrypting) return;
     const dt = delta / 1000;
 
     let inputX = 0;
@@ -1407,23 +1549,31 @@ export class BoxSmashScene extends Phaser.Scene {
   // ─── Pickup ─────────────────────────────────────────────────
 
   private tryPickup() {
-    // 优先捡盒子（盒子不进背包，直接手持）
-    if (!this.heldBox && !this.heldItem) {
-      const nearestBox = this.findNearestBox();
-      if (nearestBox) {
+    if (this.isDecrypting) return;
+
+    const handEmpty = !this.heldBox && !this.heldItem;
+    const nearestBox = handEmpty ? this.findNearestBox() : null;
+    const nearestItem = this.findNearestItem();
+
+    // 手空时：盒子与物品谁更近就捡谁（保证解密掉落的物品能第一时间被捡起）
+    if (nearestBox) {
+      const dBox = Phaser.Math.Distance.Between(this.player.x, this.player.y, nearestBox.x, nearestBox.y);
+      const dItem = nearestItem
+        ? Phaser.Math.Distance.Between(this.player.x, this.player.y, nearestItem.x, nearestItem.y)
+        : Number.MAX_VALUE;
+      if (dBox <= dItem) {
         this.heldBox = nearestBox;
         nearestBox.isHeld = true;
         nearestBox.sprite.setVisible(false);
-        this.showMessage(`捡起 ${this.rarityName(nearestBox.rarity)}盒子！\n左键敲 | 右键扔`, 1500);
+        this.showMessage(`捡起 ${this.rarityName(nearestBox.rarity)}盒子！\n左键敲碎 | 右键扔 | R 解密（奖励更高）`, 2000);
         return;
       }
     }
 
     // 捡物品 → 放入背包
-    const nearestItem = this.findNearestItem();
     if (nearestItem) {
       // 手上空 → 先放手上
-      if (!this.heldBox && !this.heldItem) {
+      if (handEmpty) {
         this.heldItem = nearestItem;
         nearestItem.collected = true;
         nearestItem.sprite.setVisible(false);
@@ -1445,11 +1595,18 @@ export class BoxSmashScene extends Phaser.Scene {
         return;
       }
     }
+
+    // 手上有东西时想捡盒子 → 提示
+    if (!handEmpty && !nearestItem) {
+      const boxNear = this.findNearestBox();
+      if (boxNear) this.showMessage('手上已有东西，先放下才能捡盒子', 1200);
+    }
   }
 
   // ─── Inventory swap (1234键) ────────────────────────────────
 
   private swapInventorySlot(slot: number) {
+    if (this.isDecrypting) return;
     if (slot < 0 || slot >= INVENTORY_SIZE) return;
     // 手上有盒子时不能切换
     if (this.heldBox) return;
@@ -1520,6 +1677,7 @@ export class BoxSmashScene extends Phaser.Scene {
   // ─── Smash (左键敲击手持盒子) ────────────────────────────────
 
   private smashHeldBox() {
+    if (this.isDecrypting) return;
     if (!this.heldBox) return;
 
     const box = this.heldBox;
@@ -1532,12 +1690,18 @@ export class BoxSmashScene extends Phaser.Scene {
     this.cam.shake(80, 0.003);
 
     if (box.hp <= 0) {
-      this.breakBox(box, this.player.x, this.player.y);
+      this.breakBox(box, this.player.x, this.player.y, Phaser.Math.FloatBetween(0.5, 0.8));
       this.heldBox = null;
     }
   }
 
-  private breakBox(box: GameBox, x: number, y: number) {
+  private breakBox(box: GameBox, x: number, y: number, valueMultiplier = 1.0, openedBy: 'smash' | 'decrypt' = 'smash') {
+    // ⚠️ 一个箱子只能被打开一次（砸开或解密打开）
+    if (box.isOpen) {
+      if (box.sprite.active) box.sprite.destroy();
+      return;
+    }
+
     box.isOpen = true;
     box.isHeld = false;
     box.isFlying = false;
@@ -1549,10 +1713,15 @@ export class BoxSmashScene extends Phaser.Scene {
     }
 
     // 掉落物品
-    this.spawnGroundItem(x, y, box.rarity, box.value);
+    this.spawnGroundItem(x, y, box.rarity, Math.floor(box.value * valueMultiplier));
 
     const cfg = this.getRarityConfig(box.rarity);
-    this.showMessage(`💥 ${cfg.name}盒子碎了！\n掉出价值 ${box.value} 的物品！\n左键捡起`, 2500);
+    const droppedValue = Math.floor(box.value * valueMultiplier);
+    if (openedBy === 'decrypt') {
+      this.showMessage(`🔓 ${cfg.name}箱子解密成功！\n掉出价值 ${droppedValue} 的物品（奖励 ×${valueMultiplier}）\n左键拾取`, 3000);
+    } else {
+      this.showMessage(`💥 ${cfg.name}盒子碎了！\n掉出价值 ${droppedValue} 的物品！\n左键捡起`, 2500);
+    }
     this.cam.shake(200, 0.008);
   }
 
@@ -1560,6 +1729,7 @@ export class BoxSmashScene extends Phaser.Scene {
 
   // Q键：轻轻放下手持物品/盒子（不飞不碎）
   private dropHeld() {
+    if (this.isDecrypting) return;
     if (this.heldBox) {
       const box = this.heldBox;
       this.heldBox = null;
@@ -1593,6 +1763,7 @@ export class BoxSmashScene extends Phaser.Scene {
   }
 
   private throwBox(pointer: Phaser.Input.Pointer) {
+    if (this.isDecrypting) return;
     if (!this.heldBox) return;
 
     const box = this.heldBox;
@@ -1623,6 +1794,7 @@ export class BoxSmashScene extends Phaser.Scene {
   }
 
   private throwItem(pointer: Phaser.Input.Pointer) {
+    if (this.isDecrypting) return;
     if (!this.heldItem) return;
 
     const item = this.heldItem;
@@ -1708,7 +1880,7 @@ export class BoxSmashScene extends Phaser.Scene {
             b.hp -= 1;
             this.drawBoxCracks(b);
             if (b.hp <= 0) {
-              this.breakBox(b, b.x, b.y);
+              this.breakBox(b, b.x, b.y, Phaser.Math.FloatBetween(0.5, 0.8));
             }
             break;
           }
@@ -1753,7 +1925,7 @@ export class BoxSmashScene extends Phaser.Scene {
 
         // 检查是否碎裂
         if (fo.isBox && fo.box && fo.box.hp <= 0) {
-          this.breakBox(fo.box, fo.sprite.x, fo.sprite.y);
+          this.breakBox(fo.box, fo.sprite.x, fo.sprite.y, Phaser.Math.FloatBetween(0.5, 0.8));
           this.flyingObjects.splice(i, 1);
           continue;
         } else if (!fo.isBox && fo.item) {
@@ -1907,10 +2079,27 @@ export class BoxSmashScene extends Phaser.Scene {
   // ─── Held position update ──────────────────────────────────
 
   private updateHeldPosition() {
+    // 防御：手上不该拿着已打开的箱子
+    if (this.heldBox && this.heldBox.isOpen) this.heldBox = null;
+
     if (this.heldBox) {
       // 手持盒子跟随玩家头顶
       this.heldBox.sprite.setVisible(true);
       this.heldBox.sprite.setPosition(this.player.x, this.player.y - 25);
+
+      // 「R 解密」提示气泡
+      if (this.heldHintText && this.heldHintText.active) {
+        if (this.isDecrypting) {
+          this.heldHintText.setVisible(false);
+        } else {
+          const cfg = this.getRarityConfig(this.heldBox.rarity);
+          const s = `[R]/[空格] 解密 奖励×${cfg.decrypt.rewardMult}（可点击）`;
+          if (this.heldHintText.text !== s) this.heldHintText.setText(s);
+          this.heldHintText.setVisible(true).setPosition(this.player.x, this.player.y - 48);
+        }
+      }
+    } else if (this.heldHintText && this.heldHintText.active) {
+      this.heldHintText.setVisible(false);
     }
     if (this.heldItem) {
       this.heldItem.sprite.setVisible(true);
@@ -1938,5 +2127,327 @@ export class BoxSmashScene extends Phaser.Scene {
       if (dist < radius) return true;
     }
     return false;
+  }
+
+  // ─── Decryption minigame (R键解密) ─────────────────────────────
+  //
+  // 玩法：手持箱子时按 R 打开解密面板。
+  // 面板里有一根来回摆动的指针，按 R（或鼠标左键）把指针锁定在绿色命中区，
+  // 即锁住一段密码。等级越高 → 段数越多 / 命中区越窄 / 指针越快 / 容错越低 / 限时越短。
+  // 全部密码段锁定 = 解密成功：箱子打开，掉出「高价值」物品（倍率 1.5~2.2，远高于砸开的 0.5~0.8）。
+  // 失误超过上限 = 解密失败：箱子受损（HP-1），耐久归零则当场震碎，只能拿到砸开的低价值。
+
+  /** 检测到输入法吞掉按键时提示一次（中文输入法在 Chrome 下会把字母键变成 keyCode 229） */
+  private warnImeOnce() {
+    if (this.imeWarned) return;
+    this.imeWarned = true;
+    this.showMessage(
+      '⚠️ 检测到【输入法】拦截了按键（所以 R 没反应）\n' +
+      '请把输入法切到【英文】再按 R/空格\n' +
+      '或者直接【鼠标点击】玩家头顶的 [R]/[空格] 解密 按钮',
+      7000
+    );
+  }
+
+  /** R 键 / 鼠标左键 统一入口 */
+  private handleDecryptKey() {
+    if (this.gameState !== 'playing' || this.isDead || this.isEscaped) return;
+    if (this.time.now < this.decryptInputLockUntil) return;   // 输入冷却，避免一次按键触发两次
+    this.decryptInputLockUntil = this.time.now + 200;
+
+    if (this.isDecrypting) {
+      this.lockDecryptSegment();
+      return;
+    }
+    if (this.heldBox) {
+      this.startDecrypt(this.heldBox);
+      return;
+    }
+    if (this.heldItem) {
+      this.showMessage('手上拿的是物品，不是箱子\n先放下物品，再左键捡起地上的箱子', 2500);
+      return;
+    }
+    this.showMessage('手上没有箱子！\n先走到箱子旁，用【左键】捡起箱子，再按 R（或空格）解密', 2500);
+  }
+
+  private startDecrypt(box: GameBox) {
+    if (box.isOpen) {
+      // 自愈：已打开的箱子不该留在手上
+      if (this.heldBox === box) this.heldBox = null;
+      this.showMessage('这个箱子已经被打开过了（一个箱子只能开一次）', 1800);
+      return;
+    }
+
+    const cfg = this.getRarityConfig(box.rarity);
+    const diff = cfg.decrypt;
+
+    this.isDecrypting = true;
+    this.decryptBox = box;
+    this.decryptSegment = 0;
+    this.decryptTotalSegments = diff.segments;
+    this.decryptMisses = 0;
+    this.decryptMaxMisses = diff.maxMisses;
+    this.decryptRewardMult = diff.rewardMult;
+    this.decryptTimeLimit = diff.timeLimit;
+    this.decryptSpeed = diff.speed;
+    this.decryptTargetSize = diff.targetSize;
+    this.decryptPanelColor = diff.panelColor;
+    // 面板刚弹出时给一点缓冲时间，避免误触立刻锁定第一段
+    this.decryptInputLockUntil = this.time.now + 300;
+
+    this.hideMessage();
+    this.buildDecryptPanel(box);
+    this.prepareDecryptSegment('按 R / 左键 锁定指针');
+  }
+
+  /** 面板 UI（跟随摄像机，不受地图滚动影响） */
+  private buildDecryptPanel(box: GameBox) {
+    const cfg = this.getRarityConfig(box.rarity);
+    const panelColor = this.decryptPanelColor;
+    const colorHex = '#' + panelColor.toString(16).padStart(6, '0');
+
+    const panelW = 520;
+    const panelH = 220;
+    const panel = this.add.container(this.screenW / 2, 300);
+    panel.setScrollFactor(0).setDepth(100);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0a0a18, 0.94);
+    bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 10);
+    bg.lineStyle(2, panelColor, 0.9);
+    bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 10);
+    panel.add(bg);
+
+    const title = this.add.text(0, -panelH / 2 + 22, `🔐 解密 · ${cfg.name}箱子`, {
+      fontSize: '20px', color: colorHex, fontStyle: 'bold',
+    }).setOrigin(0.5);
+    panel.add(title);
+
+    this.decryptInfoText = this.add.text(0, -panelH / 2 + 52, '', {
+      fontSize: '14px', color: '#aabbdd',
+    }).setOrigin(0.5);
+    panel.add(this.decryptInfoText);
+
+    this.decryptBar = this.add.graphics();
+    panel.add(this.decryptBar);
+
+    this.decryptStatusText = this.add.text(0, panelH / 2 - 52, '', {
+      fontSize: '15px', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    panel.add(this.decryptStatusText);
+
+    const hint = this.add.text(0, panelH / 2 - 24, '按 R / 空格 或 点击鼠标左键 = 锁定指针 · 命中绿色区 · ESC = 放弃并返回菜单', {
+      fontSize: '12px', color: '#777799',
+    }).setOrigin(0.5);
+    panel.add(hint);
+
+    panel.setScale(0.85);
+    this.tweens.add({ targets: panel, scale: 1, duration: 160, ease: 'Back.easeOut' });
+
+    this.decryptPanel = panel;
+  }
+
+  /** 初始化/切换到下一段密码 */
+  private prepareDecryptSegment(statusMsg: string) {
+    const size = this.decryptTargetSize;
+    this.decryptTargetStart = Phaser.Math.FloatBetween(0.05, 0.95 - size);
+    this.decryptTargetEnd = this.decryptTargetStart + size;
+    // 指针回到左端重新开始，避免上一段结束时指针正好停在命中区内“白送”
+    this.decryptPointer = 0;
+    this.decryptDir = 1;
+    this.decryptSegmentTime = this.decryptTimeLimit;
+
+    this.updateDecryptInfo();
+    this.drawDecryptBar();
+    this.setDecryptStatus(statusMsg, '#ffffff');
+  }
+
+  private updateDecrypt(delta: number) {
+    if (!this.isDecrypting || !this.decryptBox) return;
+    const dt = delta / 1000;
+
+    // 指针往返摆动
+    this.decryptPointer += this.decryptDir * this.decryptSpeed * dt;
+    if (this.decryptPointer >= 1) { this.decryptPointer = 1; this.decryptDir = -1; }
+    if (this.decryptPointer <= 0) { this.decryptPointer = 0; this.decryptDir = 1; }
+
+    // 每段限时（稀有/超稀有箱子才有，逼玩家快速反应）
+    if (this.decryptTimeLimit > 0) {
+      this.decryptSegmentTime -= dt;
+      if (this.decryptSegmentTime <= 0) {
+        this.decryptSegmentTime = 0;
+        this.decryptMisses++;
+        this.cam.shake(120, 0.004);
+        if (this.decryptMisses > this.decryptMaxMisses) {
+          this.setDecryptStatus('⏰ 超时，解密失败！', '#ff5555');
+          this.failDecrypt();
+          return;
+        }
+        this.prepareDecryptSegment(`⏰ 超时！失误 ${this.decryptMisses}/${this.decryptMaxMisses}`);
+        return;
+      }
+      this.updateDecryptInfo();
+    }
+
+    this.drawDecryptBar();
+  }
+
+  /** R/左键 按下：判定当前指针是否命中 */
+  private lockDecryptSegment() {
+    if (!this.isDecrypting || !this.decryptBox) return;
+
+    const hit = this.decryptPointer >= this.decryptTargetStart && this.decryptPointer <= this.decryptTargetEnd;
+
+    if (!hit) {
+      this.decryptMisses++;
+      this.cam.shake(120, 0.004);
+      if (this.decryptMisses > this.decryptMaxMisses) {
+        this.setDecryptStatus(`❌ 失误 ${this.decryptMisses} 次，解密失败！`, '#ff5555');
+        this.failDecrypt();
+        return;
+      }
+      this.setDecryptStatus(`❌ 未命中！失误 ${this.decryptMisses}/${this.decryptMaxMisses}`, '#ff5555');
+      return;
+    }
+
+    this.decryptSegment++;
+    if (this.decryptSegment >= this.decryptTotalSegments) {
+      this.setDecryptStatus('✅ 全部密码段解锁！', '#44ff44');
+      this.drawDecryptBar();
+      this.succeedDecrypt();
+      return;
+    }
+
+    this.prepareDecryptSegment(`✅ 第 ${this.decryptSegment} 段锁定，继续！`);
+    this.decryptInputLockUntil = this.time.now + 260;   // 段间短暂冷却，避免连点白给
+  }
+
+  /** 全部段命中 → 箱子打开，掉落高价值物品 */
+  private succeedDecrypt() {
+    const box = this.decryptBox;
+    const mult = this.decryptRewardMult;
+    this.endDecryptSession();
+    if (!box) return;
+
+    if (this.heldBox === box) this.heldBox = null;
+    box.isHeld = false;
+
+    // 物品掉落在玩家前方（手持时盒子没有世界坐标）
+    // 距离控制在拾取范围内，落地后左键即可直接捡起
+    const dropX = Phaser.Math.Clamp(this.player.x + Math.cos(this.playerFacingAngle) * 32, 40, this.mapWidth - 40);
+    const dropY = Phaser.Math.Clamp(this.player.y + Math.sin(this.playerFacingAngle) * 32, 40, this.mapHeight - 40);
+
+    this.cam.flash(120, 80, 255, 120);
+    this.breakBox(box, dropX, dropY, mult, 'decrypt');
+  }
+
+  /** 失误超限 → 解密失败，箱子受损 */
+  private failDecrypt() {
+    const box = this.decryptBox;
+    const misses = this.decryptMisses;
+    this.endDecryptSession();
+    if (!box) return;
+
+    box.hp -= 1;
+    this.drawBoxCracks(box);
+    this.cam.shake(160, 0.006);
+
+    if (box.hp <= 0) {
+      if (this.heldBox === box) this.heldBox = null;
+      box.isHeld = false;
+      const mult = Phaser.Math.FloatBetween(0.5, 0.8);
+      const dropped = Math.floor(box.value * mult);
+      const dropX = Phaser.Math.Clamp(this.player.x + Math.cos(this.playerFacingAngle) * 32, 40, this.mapWidth - 40);
+      const dropY = Phaser.Math.Clamp(this.player.y + Math.sin(this.playerFacingAngle) * 32, 40, this.mapHeight - 40);
+      this.breakBox(box, dropX, dropY, mult, 'smash');
+      this.showMessage(`❌ 解密失败（失误 ${misses} 次）\n箱子被震碎，只掉出价值 ${dropped} 的物品`, 2600);
+    } else {
+      this.showMessage(`❌ 解密失败（失误 ${misses} 次）\n箱子受损 HP ${box.hp}/${box.maxHp}，可继续尝试`, 2400);
+    }
+  }
+
+  /** 关闭解密面板并复位状态 */
+  private endDecryptSession() {
+    this.isDecrypting = false;
+    this.decryptBox = null;
+    this.decryptMisses = 0;
+    this.decryptSegmentTime = 0;
+    this.decryptInputLockUntil = this.time.now + 250;
+    if (this.decryptPanel) {
+      this.decryptPanel.destroy();
+      this.decryptPanel = null;
+    }
+    this.decryptBar = null;
+    this.decryptInfoText = null;
+    this.decryptStatusText = null;
+  }
+
+  private updateDecryptInfo() {
+    if (!this.decryptInfoText) return;
+    const timeStr = this.decryptTimeLimit > 0
+      ? `  |  ⏱ ${Math.max(0, this.decryptSegmentTime).toFixed(1)}s`
+      : '';
+    const s = `密码段 ${Math.min(this.decryptSegment + 1, this.decryptTotalSegments)}/${this.decryptTotalSegments}`
+      + `  |  失误 ${this.decryptMisses}/${this.decryptMaxMisses}`
+      + `  |  奖励 ×${this.decryptRewardMult}`
+      + timeStr;
+    if (this.decryptInfoText.text !== s) this.decryptInfoText.setText(s);
+  }
+
+  private setDecryptStatus(text: string, color: string) {
+    if (!this.decryptStatusText) return;
+    if (this.decryptStatusText.text !== text) this.decryptStatusText.setText(text);
+    this.decryptStatusText.setColor(color);
+  }
+
+  private drawDecryptBar() {
+    const g = this.decryptBar;
+    if (!g) return;
+    g.clear();
+
+    const barW = 460;
+    const barH = 30;
+    const barX = -barW / 2;
+    const barY = -6;
+
+    // 底轨
+    g.fillStyle(0x14142a, 1);
+    g.fillRect(barX, barY, barW, barH);
+
+    // 已锁定的进度
+    const lockedRatio = this.decryptTotalSegments > 0 ? this.decryptSegment / this.decryptTotalSegments : 0;
+    if (lockedRatio > 0) {
+      g.fillStyle(0x226622, 0.6);
+      g.fillRect(barX, barY, barW * lockedRatio, barH);
+    }
+
+    // 绿色命中区
+    const targetX = barX + this.decryptTargetStart * barW;
+    const targetW = (this.decryptTargetEnd - this.decryptTargetStart) * barW;
+    g.fillStyle(0x44ff44, 0.5);
+    g.fillRect(targetX, barY, targetW, barH);
+    g.lineStyle(2, 0x88ff88, 1);
+    g.strokeRect(targetX, barY, targetW, barH);
+
+    // 指针
+    const px = barX + this.decryptPointer * barW;
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(px - 3, barY - 8, 6, barH + 16);
+    g.fillStyle(0xffdd00, 1);
+    g.fillRect(px - 6, barY - 12, 12, 5);
+
+    // 外框
+    g.lineStyle(2, 0x666688, 1);
+    g.strokeRect(barX, barY, barW, barH);
+
+    // 段位指示灯
+    const dotGap = 22;
+    const dotStart = -((this.decryptTotalSegments - 1) * dotGap) / 2;
+    for (let i = 0; i < this.decryptTotalSegments; i++) {
+      const done = i < this.decryptSegment;
+      const current = i === this.decryptSegment;
+      g.fillStyle(done ? 0x44ff44 : current ? 0xffdd00 : 0x333355, 1);
+      g.fillCircle(dotStart + i * dotGap, 42, current ? 6 : 4);
+    }
   }
 }
